@@ -1,0 +1,1190 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Financial LINE OA Dashboard - ระบบจัดการการเงินผ่าน LINE OA</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts: Prompt & Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Prompt', 'Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        line: {
+                            DEFAULT: '#00C73C',
+                            dark: '#00B334',
+                            light: '#E6F9EC',
+                        },
+                        pastel: {
+                            purple: '#EBE4F8',
+                            purpleDark: '#7C5CFC',
+                            pink: '#FDE2E4',
+                            pinkDark: '#E06D8A',
+                            mint: '#D8F3DC',
+                            mintDark: '#2D6A4F',
+                            blue: '#E0F2FE',
+                            blueDark: '#0284C7',
+                            yellow: '#FEF9C3',
+                            yellowDark: '#D97706',
+                            bg: '#F9FAFD',
+                            card: '#FFFFFF',
+                        }
+                    },
+                    boxShadow: {
+                        'soft': '0 10px 30px -5px rgba(180, 190, 215, 0.25)',
+                        'soft-lg': '0 20px 40px -10px rgba(160, 175, 210, 0.3)',
+                        'glow': '0 0 20px rgba(124, 92, 252, 0.25)',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Prompt', sans-serif;
+            background-color: #F8FAF9;
+            color: #334155;
+        }
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #F1F5F9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #CBD5E1;
+            border-radius: 9999px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94A3B8;
+        }
+        /* Chat bubble animation */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .chat-animate {
+            animation: fadeIn 0.3s ease-out forwards;
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+    </style>
+</head>
+<body class="bg-[#FAF9FE] text-slate-700 min-h-screen flex flex-col antialiased selection:bg-purple-100 selection:text-purple-600">
+
+    <!-- Toast Notification Overlay -->
+    <div id="toastContainer" class="fixed top-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <!-- MAIN APP WRAPPER -->
+    <div class="flex flex-col lg:flex-row min-h-screen">
+
+        <!-- SIDEBAR NAVIGATION -->
+        <aside class="w-full lg:w-72 bg-white/80 backdrop-blur-md border-r border-slate-100 p-5 flex flex-col justify-between z-20 sticky top-0 lg:h-screen">
+            <div>
+                <!-- Brand Logo -->
+                <div class="flex items-center gap-3 px-3 py-2 mb-8">
+                    <div class="w-11 h-11 rounded-2xl bg-gradient-to-tr from-purple-500 to-indigo-400 text-white flex items-center justify-center shadow-md shadow-purple-200 text-xl font-bold">
+                        <i class="fa-solid font-bold fa-wallet"></i>
+                    </div>
+                    <div>
+                        <h1 class="font-bold text-lg text-slate-800 leading-snug">FinFlow <span class="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-semibold">LINE OA</span></h1>
+                        <p class="text-xs text-slate-400 font-normal">ระบบการเงินส่วนบุคคลผ่านไลน์</p>
+                    </div>
+                </div>
+
+                <!-- Navigation Links -->
+                <nav class="space-y-1.5">
+                    <button onclick="switchTab('dashboard')" id="nav-dashboard" class="nav-btn w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-medium transition-all text-purple-700 bg-purple-50 shadow-sm">
+                        <i class="fa-solid fa-chart-pie text-lg"></i>
+                        <span>ภาพรวมบัญชี</span>
+                    </button>
+                    <button onclick="switchTab('transactions')" id="nav-transactions" class="nav-btn w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-medium transition-all text-slate-500 hover:bg-slate-50 hover:text-slate-700">
+                        <i class="fa-solid fa-[#64748B] fa-receipt text-lg"></i>
+                        <span>รายการบันทึกเงิน</span>
+                    </button>
+                    <button onclick="switchTab('line-sim')" id="nav-line-sim" class="nav-btn w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-medium transition-all text-slate-500 hover:bg-slate-50 hover:text-slate-700">
+                        <i class="fa-brands fa-line text-lg text-emerald-500"></i>
+                        <span>LINE OA Simulator</span>
+                        <span class="ml-auto text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-600 font-semibold">Live</span>
+                    </button>
+                    <button onclick="switchTab('goals')" id="nav-goals" class="nav-btn w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-medium transition-all text-slate-500 hover:bg-slate-50 hover:text-slate-700">
+                        <i class="fa-solid fa-piggy-bank text-lg text-pink-500"></i>
+                        <span>เป้าหมายการออม</span>
+                    </button>
+                    <button onclick="switchTab('ai-advisor')" id="nav-ai-advisor" class="nav-btn w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-medium transition-all text-slate-500 hover:bg-slate-50 hover:text-slate-700">
+                        <i class="fa-solid fa-wand-magic-sparkles text-lg text-amber-500"></i>
+                        <span>AI Financial Coach</span>
+                    </button>
+                    <button onclick="switchTab('settings')" id="nav-settings" class="nav-btn w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-medium transition-all text-slate-500 hover:bg-slate-50 hover:text-slate-700">
+                        <i class="fa-solid fa-sliders text-lg"></i>
+                        <span>ตั้งค่า LINE OA / Rich Menu</span>
+                    </button>
+                </nav>
+            </div>
+
+            <!-- LINE Sync Status Card -->
+            <div class="mt-8 p-4 rounded-3xl bg-gradient-to-br from-emerald-50 via-teal-50 to-emerald-100/50 border border-emerald-100/80 shadow-soft">
+                <div class="flex items-center gap-3 mb-2">
+                    <div class="w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center text-sm shadow-sm">
+                        <i class="fa-brands fa-line"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs font-semibold text-slate-700">LINE Official Status</p>
+                        <p class="text-[11px] text-emerald-600 font-medium flex items-center gap-1">
+                            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> เชื่อมต่อเรียบร้อย
+                        </p>
+                    </div>
+                </div>
+                <p class="text-[11px] text-slate-500 leading-relaxed mb-3">บัญชีไลน์: @FinFlow.TH (LIFF Connected)</p>
+                <button onclick="switchTab('line-sim')" class="w-full text-xs font-semibold py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5">
+                    <i class="fa-regular fa-paper-plane"></i> ลองส่งข้อความทดสอบ
+                </button>
+            </div>
+        </aside>
+
+        <!-- MAIN CONTENT AREA -->
+        <main class="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full overflow-y-auto">
+
+            <!-- TOP HEADER BAR -->
+            <header class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8 pb-4 border-b border-slate-100">
+                <div>
+                    <h2 id="page-title" class="text-2xl font-bold text-slate-800">ภาพรวมการเงิน (Overview)</h2>
+                    <p id="page-subtitle" class="text-xs md:text-sm text-slate-400 font-normal">สรุปยอดรับ-จ่าย และการจัดการผ่าน LINE Official Account</p>
+                </div>
+
+                <div class="flex items-center gap-3 w-full sm:w-auto justify-end">
+                    <!-- Quick Add Button -->
+                    <button onclick="openTransactionModal()" class="flex-1 sm:flex-none py-2.5 px-4 rounded-2xl bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white font-medium text-sm transition-all shadow-md shadow-purple-200 flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-plus"></i>
+                        <span>บันทึกรายรับ/รายจ่าย</span>
+                    </button>
+                    <!-- User Avatar -->
+                    <div class="flex items-center gap-3 bg-white p-1.5 pr-4 rounded-full border border-slate-100 shadow-sm">
+                        <img src="https://placehold.co/100x100/EBE4F8/7C5CFC?text=User" alt="Avatar" class="w-9 h-9 rounded-full object-cover ring-2 ring-purple-200">
+                        <div class="hidden sm:block">
+                            <p class="text-xs font-semibold text-slate-700">คุณสมชาย ใจดี</p>
+                            <p class="text-[10px] text-slate-400">LINE VIP Member</p>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- TAB 1: DASHBOARD VIEW -->
+            <section id="tab-dashboard" class="tab-content space-y-6">
+
+                <!-- PASTEL METRIC CARDS GRID -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+
+                    <!-- Total Balance -->
+                    <div class="p-6 rounded-3xl bg-gradient-to-br from-purple-50 to-indigo-50/50 border border-purple-100 shadow-soft hover:shadow-soft-lg transition-all">
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="text-xs font-semibold text-purple-600 bg-white/80 px-3 py-1 rounded-full border border-purple-100">เงินคงเหลือรวม</span>
+                            <div class="w-10 h-10 rounded-2xl bg-purple-500/10 text-purple-600 flex items-center justify-center text-lg">
+                                <i class="fa-solid fa-wallet"></i>
+                            </div>
+                        </div>
+                        <h3 class="text-2xl font-bold text-slate-800 mb-1" id="dash-balance">฿ 148,500.00</h3>
+                        <p class="text-xs text-emerald-600 font-medium flex items-center gap-1">
+                            <i class="fa-solid fa-arrow-up"></i> +12.4% จากเดือนที่แล้ว
+                        </p>
+                    </div>
+
+                    <!-- Monthly Income -->
+                    <div class="p-6 rounded-3xl bg-gradient-to-br from-emerald-50 to-teal-50/50 border border-emerald-100 shadow-soft hover:shadow-soft-lg transition-all">
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="text-xs font-semibold text-emerald-600 bg-white/80 px-3 py-1 rounded-full border border-emerald-100">รายรับเดือนนี้</span>
+                            <div class="w-10 h-10 rounded-2xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center text-lg">
+                                <i class="fa-solid fa-arrow-down-left"></i>
+                            </div>
+                        </div>
+                        <h3 class="text-2xl font-bold text-slate-800 mb-1" id="dash-income">฿ 65,000.00</h3>
+                        <p class="text-xs text-slate-400">อัปเดตจาก LINE Slip Auto-Detect</p>
+                    </div>
+
+                    <!-- Monthly Expense -->
+                    <div class="p-6 rounded-3xl bg-gradient-to-br from-rose-50 to-pink-50/50 border border-pink-100 shadow-soft hover:shadow-soft-lg transition-all">
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="text-xs font-semibold text-rose-600 bg-white/80 px-3 py-1 rounded-full border border-pink-100">รายจ่ายเดือนนี้</span>
+                            <div class="w-10 h-10 rounded-2xl bg-rose-500/10 text-rose-600 flex items-center justify-center text-lg">
+                                <i class="fa-solid fa-arrow-up-right"></i>
+                            </div>
+                        </div>
+                        <h3 class="text-2xl font-bold text-slate-800 mb-1" id="dash-expense">฿ 21,450.00</h3>
+                        <p class="text-xs text-rose-500 font-medium">33% ของรายรับทั้งหมด</p>
+                    </div>
+
+                    <!-- Savings Goal Target -->
+                    <div class="p-6 rounded-3xl bg-gradient-to-br from-amber-50 to-yellow-50/50 border border-amber-100 shadow-soft hover:shadow-soft-lg transition-all">
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="text-xs font-semibold text-amber-600 bg-white/80 px-3 py-1 rounded-full border border-amber-100">เงินออมสะสม</span>
+                            <div class="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-600 flex items-center justify-center text-lg">
+                                <i class="fa-solid fa-vault"></i>
+                            </div>
+                        </div>
+                        <h3 class="text-2xl font-bold text-slate-800 mb-1" id="dash-savings">฿ 45,000.00</h3>
+                        <div class="w-full bg-amber-100 h-2 rounded-full overflow-hidden mt-2">
+                            <div class="bg-amber-400 h-full rounded-full" style="width: 75%"></div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- CHARTS AND RECENT TRANSACTIONS GRID -->
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+                    <!-- Chart Card -->
+                    <div class="lg:col-span-2 bg-white p-6 rounded-3xl border border-slate-100 shadow-soft">
+                        <div class="flex items-center justify-between mb-6">
+                            <div>
+                                <h4 class="font-bold text-slate-800 text-base">การวิเคราะห์ค่าใช้จ่ายประจำเดือน</h4>
+                                <p class="text-xs text-slate-400">เปรียบเทียบรายรับ-รายจ่ายผ่านระบบบันทึกไลน์</p>
+                            </div>
+                            <select id="chartFilter" onchange="updateChartData()" class="text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-purple-200 font-medium text-slate-600">
+                                <option value="monthly">เดือนนี้ (มีนาคม)</option>
+                                <option value="quarterly">ไตรมาสล่าสุด</option>
+                            </select>
+                        </div>
+                        <div class="h-64 sm:h-72 w-full">
+                            <canvas id="financialChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Category Breakdown Doughnut -->
+                    <div class="bg-white p-6 rounded-3xl border border-slate-100 shadow-soft flex flex-col justify-between">
+                        <div>
+                            <h4 class="font-bold text-slate-800 text-base mb-1">หมวดหมู่รายจ่ายสูงสุด</h4>
+                            <p class="text-xs text-slate-400 mb-4">จัดกลุ่มอัตโนมัติด้วย LINE AI Bot</p>
+                            <div class="h-48 w-full flex items-center justify-center">
+                                <canvas id="categoryChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="mt-4 pt-4 border-t border-slate-100 space-y-2">
+                            <div class="flex justify-between text-xs">
+                                <span class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-purple-400"></span> อาหาร & เครื่องดื่ม</span>
+                                <span class="font-semibold text-slate-700">8,400 ฿</span>
+                            </div>
+                            <div class="flex justify-between text-xs">
+                                <span class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-pink-300"></span> ช้อปปิ้ง / สังสรรค์</span>
+                                <span class="font-semibold text-slate-700">5,200 ฿</span>
+                            </div>
+                            <div class="flex justify-between text-xs">
+                                <span class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-blue-300"></span> เดินทาง & น้ำมัน</span>
+                                <span class="font-semibold text-slate-700">3,850 ฿</span>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- LINE OA FEATURE HIGHLIGHT BANNER -->
+                <div class="bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 text-white p-6 sm:p-8 rounded-3xl shadow-lg relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-6">
+                    <div class="relative z-10 max-w-xl">
+                        <span class="bg-white/20 text-white text-xs px-3 py-1 rounded-full font-medium inline-block mb-3 backdrop-blur-sm">LINE Official Feature</span>
+                        <h3 class="text-xl sm:text-2xl font-bold mb-2">ส่งสลิปโอนเงินเข้าไลน์ แล้วระบบลงบัญชีให้อัตโนมัติ!</h3>
+                        <p class="text-emerald-100 text-xs sm:text-sm leading-relaxed mb-4">ไม่ต้องพิมพ์เองให้เสียเวลา เพียงส่งรูป Slip การโอนเงิน หรือพิมพ์บอกสั้นๆ เช่น "กาแฟ 60" Bot จะอ่าน OCR และแยกหมวดหมู่ให้ทันที</p>
+                        <div class="flex flex-wrap gap-3">
+                            <button onclick="switchTab('line-sim')" class="bg-white text-emerald-700 hover:bg-emerald-50 text-xs font-bold px-5 py-2.5 rounded-2xl transition-all shadow-sm">
+                                ทดลองใช้งานสแกนสลิป
+                            </button>
+                            <button onclick="switchTab('settings')" class="bg-emerald-600/60 hover:bg-emerald-600 text-white text-xs font-medium px-4 py-2.5 rounded-2xl border border-white/20 transition-all">
+                                ดูวิธีเชื่อมต่อ Webhook
+                            </button>
+                        </div>
+                    </div>
+                    <div class="relative z-10 hidden md:block">
+                        <div class="w-36 h-36 bg-white/10 rounded-full flex items-center justify-center backdrop-blur-md border border-white/20 shadow-inner">
+                            <i class="fa-solid fa-qrcode text-6xl text-white/90"></i>
+                        </div>
+                    </div>
+                    <!-- Background Decorative Circles -->
+                    <div class="absolute -right-10 -bottom-10 w-48 h-48 bg-white/10 rounded-full blur-2xl pointer-events-none"></div>
+                </div>
+
+                <!-- RECENT TRANSACTIONS TABLE CARD -->
+                <div class="bg-white p-6 rounded-3xl border border-slate-100 shadow-soft">
+                    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+                        <div>
+                            <h4 class="font-bold text-slate-800 text-base">รายการบันทึกชีพล่าสุด</h4>
+                            <p class="text-xs text-slate-400">ซิงก์ข้อมูลเรียลไทม์จากระบบ LINE OA & Web Application</p>
+                        </div>
+                        <button onclick="switchTab('transactions')" class="text-xs font-semibold text-purple-600 hover:text-purple-700 flex items-center gap-1">
+                            ดูทั้งหมด <i class="fa-solid fa-chevron-right text-[10px]"></i>
+                        </button>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs">
+                            <thead>
+                                <tr class="text-slate-400 border-b border-slate-100">
+                                    <th class="pb-3 font-medium">รายการ / รายละเอียด</th>
+                                    <th class="pb-3 font-medium">ช่องทาง</th>
+                                    <th class="pb-3 font-medium">หมวดหมู่</th>
+                                    <th class="pb-3 font-medium">วัน-เวลา</th>
+                                    <th class="pb-3 font-medium text-right">จำนวนเงิน</th>
+                                </tr>
+                            </thead>
+                            <tbody id="recent-transactions-list" class="divide-y divide-slate-50">
+                                <!-- Populated dynamically by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </section>
+
+            <!-- TAB 2: TRANSACTIONS MANAGEMENT -->
+            <section id="tab-transactions" class="tab-content hidden space-y-6">
+                <div class="bg-white p-6 rounded-3xl border border-slate-100 shadow-soft">
+                    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+                        <div class="flex items-center gap-3 w-full sm:w-auto">
+                            <div class="relative flex-1 sm:w-64">
+                                <i class="fa-solid fa-magnifying-glass absolute left-3 top-3 text-slate-400"></i>
+                                <input type="text" id="searchTx" oninput="filterTransactions()" placeholder="ค้นหารายการ..." class="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-purple-200">
+                            </div>
+                            <select id="typeFilter" onchange="filterTransactions()" class="text-xs bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-200 text-slate-600 font-medium">
+                                <option value="all">ทุกประเภท</option>
+                                <option value="income">รายรับ</option>
+                                <option value="expense">รายจ่าย</option>
+                            </select>
+                        </div>
+                        <button onclick="openTransactionModal()" class="w-full sm:w-auto py-2 px-4 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-medium text-xs transition-all flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-plus"></i> เพิ่มรายการใหม่
+                        </button>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs">
+                            <thead>
+                                <tr class="text-slate-400 border-b border-slate-100">
+                                    <th class="pb-3 font-medium">รายการ</th>
+                                    <th class="pb-3 font-medium">ที่มา (Channel)</th>
+                                    <th class="pb-3 font-medium">หมวดหมู่</th>
+                                    <th class="pb-3 font-medium">วันที่</th>
+                                    <th class="pb-3 font-medium text-right">จำนวนเงิน (บาท)</th>
+                                    <th class="pb-3 font-medium text-center">จัดการ</th>
+                                </tr>
+                            </thead>
+                            <tbody id="all-transactions-list" class="divide-y divide-slate-50">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB 3: LINE OA SIMULATOR -->
+            <section id="tab-line-sim" class="tab-content hidden space-y-6">
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+                    <!-- Simulator Info Card -->
+                    <div class="lg:col-span-5 space-y-5">
+                        <div class="bg-white p-6 rounded-3xl border border-slate-100 shadow-soft">
+                            <div class="flex items-center gap-3 mb-4">
+                                <div class="w-10 h-10 rounded-2xl bg-emerald-500 text-white flex items-center justify-center text-xl shadow-md">
+                                    <i class="fa-brands fa-line"></i>
+                                </div>
+                                <div>
+                                    <h3 class="font-bold text-slate-800 text-base">จำลองการคุยกับ LINE OA Bot</h3>
+                                    <p class="text-xs text-slate-400">ทดสอบระบบบันทึกเงินผ่านแชตไลน์</p>
+                                </div>
+                            </div>
+
+                            <p class="text-xs text-slate-600 leading-relaxed mb-4">
+                                ตัวจำลองการทำงานฝั่งผู้ใช้ (LINE User View) เมื่อพิมพ์ข้อความบอกรายรับ-รายจ่าย หรือส่ง Slip ระบบจะประมวลผลคำสั่งเข้าฐานข้อมูลโดยอัตโนมัติ
+                            </p>
+
+                            <!-- Example Prompt Buttons -->
+                            <div class="space-y-2">
+                                <p class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">ตัวอย่างคำสั่งทดสอบสั่งงาน:</p>
+                                <div class="flex flex-wrap gap-2">
+                                    <button onclick="sendQuickMessage('ข้าวผัดกะเพรา 60 บาท')" class="text-xs bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 px-3 py-1.5 rounded-xl border border-slate-200 transition-all">
+                                        🍔 "ข้าวผัดกะเพรา 60"
+                                    </button>
+                                    <button onclick="sendQuickMessage('เงินเดือนเข้า 45000 บาท')" class="text-xs bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 px-3 py-1.5 rounded-xl border border-slate-200 transition-all">
+                                        💰 "เงินเดือนเข้า 45000"
+                                    </button>
+                                    <button onclick="sendQuickMessage('เติมน้ำมันรถ 800')" class="text-xs bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 px-3 py-1.5 rounded-xl border border-slate-200 transition-all">
+                                        ⛽ "เติมน้ำมัน 800"
+                                    </button>
+                                    <button onclick="sendQuickSlipSim()" class="text-xs bg-emerald-100 text-emerald-800 hover:bg-emerald-200 px-3 py-1.5 rounded-xl font-medium transition-all flex items-center gap-1">
+                                        <i class="fa-solid fa-file-invoice-dollar"></i> จำลองส่ง Slip โอนเงิน 150฿
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- LIFF Rich Menu Quick View -->
+                        <div class="bg-gradient-to-br from-purple-50 to-pink-50 p-6 rounded-3xl border border-purple-100 shadow-soft">
+                            <h4 class="font-bold text-slate-800 text-sm mb-2 flex items-center gap-2">
+                                <i class="fa-solid fa-border-all text-purple-600"></i> LIFF & Rich Menu Action
+                            </h4>
+                            <p class="text-xs text-slate-500 mb-4">เมนูด่วนกดยอดนิยมบน Rich Menu ใน LINE</p>
+
+                            <div class="grid grid-cols-3 gap-2">
+                                <button onclick="sendQuickMessage('สรุปยอดวันนี้')" class="p-3 bg-white rounded-2xl text-center shadow-xs hover:shadow-md transition-all border border-purple-100 flex flex-col items-center">
+                                    <i class="fa-solid fa-chart-line text-purple-500 mb-1"></i>
+                                    <span class="text-[10px] font-semibold text-slate-700">สรุปวันนี้</span>
+                                </button>
+                                <button onclick="sendQuickMessage('เป้าหมายออมเงิน')" class="p-3 bg-white rounded-2xl text-center shadow-xs hover:shadow-md transition-all border border-purple-100 flex flex-col items-center">
+                                    <i class="fa-solid fa-bullseye text-pink-500 mb-1"></i>
+                                    <span class="text-[10px] font-semibold text-slate-700">เป้าหมาย</span>
+                                </button>
+                                <button onclick="openTransactionModal()" class="p-3 bg-white rounded-2xl text-center shadow-xs hover:shadow-md transition-all border border-purple-100 flex flex-col items-center">
+                                    <i class="fa-solid fa-plus-circle text-emerald-500 mb-1"></i>
+                                    <span class="text-[10px] font-semibold text-slate-700">เปิด LIFF Form</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Simulator Device Wrapper -->
+                    <div class="lg:col-span-7 flex justify-center">
+                        <div class="w-full max-w-sm bg-slate-900 rounded-[40px] p-3 shadow-2xl border-4 border-slate-800">
+                            <!-- Phone Screen -->
+                            <div class="w-full h-[580px] bg-[#8492A6] rounded-[30px] flex flex-col overflow-hidden relative">
+
+                                <!-- LINE Chat Header -->
+                                <div class="bg-[#202938] text-white p-4 flex items-center justify-between shadow-md z-10">
+                                    <div class="flex items-center gap-3">
+                                        <i class="fa-solid fa-chevron-left text-xs text-slate-400"></i>
+                                        <div class="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center font-bold text-xs">
+                                            FF
+                                        </div>
+                                        <div>
+                                            <p class="text-xs font-bold flex items-center gap-1">
+                                                FinFlow Financial <i class="fa-solid fa-circle-check text-emerald-400 text-[10px]"></i>
+                                            </p>
+                                            <p class="text-[9px] text-slate-400">Official Account</p>
+                                        </div>
+                                    </div>
+                                    <div class="flex gap-3 text-slate-400 text-sm">
+                                        <i class="fa-solid fa-magnifying-glass"></i>
+                                        <i class="fa-solid fa-bars"></i>
+                                    </div>
+                                </div>
+
+                                <!-- Chat Messages Container -->
+                                <div id="chat-messages" class="flex-1 p-4 overflow-y-auto space-y-3 bg-[#72849A]/30 backdrop-blur-xs">
+
+                                    <!-- Initial Welcome Message from Bot -->
+                                    <div class="flex items-start gap-2 chat-animate">
+                                        <div class="w-7 h-7 rounded-full bg-emerald-500 text-white flex items-center justify-center text-[10px] font-bold">FF</div>
+                                        <div class="bg-white text-slate-800 text-xs p-3 rounded-2xl rounded-tl-none max-w-[80%] shadow-sm">
+                                            สวัสดีครับคุณ สมชาย! 👋 <br>ยินดีต้อนรับสู่ระบบ FinFlow บันทึกการเงินผ่าน LINE <br><br>ลองพิมพ์รายการ เช่น <b>"ข้าว 80"</b> หรือส่งสลิปมาได้เลยครับ!
+                                        </div>
+                                    </div>
+
+                                </div>
+
+                                <!-- LINE Chat Input Bar -->
+                                <div class="bg-white p-2 border-t border-slate-200 flex items-center gap-2">
+                                    <button onclick="sendQuickSlipSim()" class="text-slate-400 hover:text-emerald-600 p-2 text-sm">
+                                        <i class="fa-solid fa-paperclip"></i>
+                                    </button>
+                                    <input type="text" id="lineInput" onkeypress="if(event.key === 'Enter') sendLineMessage()" placeholder="พิมพ์ข้อความบันทึก..." class="flex-1 bg-slate-100 text-slate-800 text-xs px-3 py-2 rounded-full focus:outline-none focus:ring-1 focus:ring-emerald-400">
+                                    <button onclick="sendLineMessage()" class="w-8 h-8 bg-emerald-500 hover:bg-emerald-600 text-white rounded-full flex items-center justify-center text-xs shadow-sm transition-all">
+                                        <i class="fa-solid fa-paper-plane"></i>
+                                    </button>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+
+            <!-- TAB 4: SAVINGS GOALS -->
+            <section id="tab-goals" class="tab-content hidden space-y-6">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h3 class="text-lg font-bold text-slate-800">เป้าหมายการออมเงิน (Savings Goals)</h3>
+                        <p class="text-xs text-slate-400">สร้างเป้าหมายเก็บเงิน แจ้งเตือนออมผ่าน LINE ทุกเดือน</p>
+                    </div>
+                    <button onclick="openGoalModal()" class="py-2 px-4 rounded-xl bg-pink-500 hover:bg-pink-600 text-white font-medium text-xs shadow-md shadow-pink-200 transition-all flex items-center gap-2">
+                        <i class="fa-solid fa-plus"></i> เพิ่มเป้าหมายออมเงิน
+                    </button>
+                </div>
+
+                <div id="goals-container" class="grid grid-cols-1 md:grid-cols-3 gap-5">
+                    <!-- Populated dynamically -->
+                </div>
+            </section>
+
+            <!-- TAB 5: AI FINANCIAL ADVISOR -->
+            <section id="tab-ai-advisor" class="tab-content hidden space-y-6">
+                <div class="bg-gradient-to-br from-purple-950 via-indigo-900 to-slate-900 text-white p-6 sm:p-8 rounded-3xl shadow-xl relative overflow-hidden">
+                    <div class="max-w-2xl relative z-10">
+                        <div class="inline-flex items-center gap-2 bg-purple-500/30 border border-purple-400/30 px-3 py-1 rounded-full text-xs text-purple-200 font-medium mb-4">
+                            <i class="fa-solid fa-wand-magic-sparkles text-amber-300"></i> Powered by Gemini AI (Google)
+                        </div>
+                        <h3 class="text-2xl font-bold mb-2">โค้ชการเงินส่วนตัวผ่าน LINE AI</h3>
+                        <p class="text-xs sm:text-sm text-purple-200 leading-relaxed mb-6">
+                            วิเคราะห์พฤติกรรมการใช้จ่าย ประเมินความเสี่ยง และวางแผนเกษียณโดยใช้ Gemini 3 Flash คุณสามารถขอคำแนะนำเฉพาะบุคคลได้เลย
+                        </p>
+
+                        <div class="flex flex-col sm:flex-row gap-3">
+                            <input type="text" id="aiPromptInput" placeholder="ถาม AI เช่น 'แนะนำวิธีลดค่าอาหาร 20% ในเดือนนี้ หน่อย'" class="flex-1 bg-white/10 text-white placeholder-purple-300/60 text-xs sm:text-sm px-4 py-3 rounded-2xl border border-white/20 focus:outline-none focus:ring-2 focus:ring-purple-400 backdrop-blur-md">
+                            <button onclick="askGeminiAdvisor()" id="aiAskBtn" class="bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 text-slate-950 text-xs font-bold px-6 py-3 rounded-2xl transition-all shadow-md flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-sparkles"></i>
+                                <span>วิเคราะห์การเงิน</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- AI Response Card -->
+                <div id="aiResponseBox" class="bg-white p-6 rounded-3xl border border-slate-100 shadow-soft hidden">
+                    <div class="flex items-center gap-3 mb-4 pb-3 border-b border-slate-100">
+                        <div class="w-9 h-9 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center text-lg">
+                            <i class="fa-solid fa-robot"></i>
+                        </div>
+                        <div>
+                            <h4 class="font-bold text-slate-800 text-sm">บทวิเคราะห์จาก FinFlow AI Coach</h4>
+                            <p class="text-[11px] text-slate-400">คำแนะนำจากการคำนวณรายรับ-รายจ่ายย้อนหลัง</p>
+                        </div>
+                    </div>
+                    <div id="aiResponseText" class="text-xs sm:text-sm text-slate-600 leading-relaxed space-y-2">
+                        <!-- Content inserted via JS -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB 6: SETTINGS & LINE OA CONFIG -->
+            <section id="tab-settings" class="tab-content hidden space-y-6">
+                <div class="bg-white p-6 sm:p-8 rounded-3xl border border-slate-100 shadow-soft max-w-4xl">
+                    <h3 class="text-lg font-bold text-slate-800 mb-1">การตั้งค่า LINE Official Account & Messaging API</h3>
+                    <p class="text-xs text-slate-400 mb-6">เชื่อมต่อกับ LINE Developers Console เพื่อรับ Webhook Event และเปิดใช้งาน LIFF</p>
+
+                    <div class="space-y-5 text-xs">
+                        <div class="p-4 rounded-2xl bg-purple-50/60 border border-purple-100">
+                            <label class="block font-bold text-purple-900 mb-1">Channel Access Token (Long-lived)</label>
+                            <input type="text" readonly value="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...finflow_secret_token" class="w-full bg-white border border-purple-200 rounded-xl px-3 py-2 text-slate-600 font-mono text-[11px]">
+                        </div>
+
+                        <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200">
+                            <label class="block font-bold text-slate-800 mb-1">Webhook URL สำหรับใส่ใน LINE Console</label>
+                            <div class="flex items-center gap-2">
+                                <input type="text" id="webhookUrl" readonly value="https://api.finflow-app.com/v1/line/webhook" class="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-600 font-mono text-[11px]">
+                                <button onclick="copyToClipboard('https://api.finflow-app.com/v1/line/webhook')" class="py-2 px-3 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-medium transition-all">
+                                    <i class="fa-solid fa-copy"></i> คัดลอก
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="pt-4 border-t border-slate-100">
+                            <h4 class="font-bold text-slate-800 text-sm mb-3">คุณสมบัติที่เปิดใช้งานอยู่ (Enabled Features)</h4>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div class="flex items-center gap-3 p-3 rounded-2xl border border-slate-100 bg-slate-50/50">
+                                    <i class="fa-solid fa-circle-check text-emerald-500 text-base"></i>
+                                    <div>
+                                        <p class="font-semibold text-slate-700">Slip OCR Scanner</p>
+                                        <p class="text-[10px] text-slate-400">แกะยอดโอนจากสลิปอัตโนมัติ</p>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-3 p-3 rounded-2xl border border-slate-100 bg-slate-50/50">
+                                    <i class="fa-solid fa-circle-check text-emerald-500 text-base"></i>
+                                    <div>
+                                        <p class="font-semibold text-slate-700">Daily Summary Broadcast</p>
+                                        <p class="text-[10px] text-slate-400">ส่งสรุปยอดตอน 20:00 น. ทุกวัน</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- TRANSACTION MODAL -->
+    <div id="txModal" class="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-slate-100 transform transition-all">
+            <div class="flex justify-between items-center mb-5">
+                <h3 class="font-bold text-slate-800 text-lg">เพิ่มรายการใหม่ (Add Transaction)</h3>
+                <button onclick="closeTransactionModal()" class="text-slate-400 hover:text-slate-600 text-lg">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <form id="txForm" onsubmit="handleTransactionSubmit(event)" class="space-y-4 text-xs">
+                <div>
+                    <label class="block font-semibold text-slate-700 mb-1.5">ประเภทรายการ</label>
+                    <div class="grid grid-cols-2 gap-3">
+                        <label class="flex items-center justify-center gap-2 p-2.5 rounded-2xl border border-slate-200 cursor-pointer has-[:checked]:bg-emerald-50 has-[:checked]:border-emerald-400 has-[:checked]:text-emerald-700 font-medium">
+                            <input type="radio" name="txType" value="income" checked class="hidden">
+                            <i class="fa-solid fa-arrow-down-left"></i> รายรับ (Income)
+                        </label>
+                        <label class="flex items-center justify-center gap-2 p-2.5 rounded-2xl border border-slate-200 cursor-pointer has-[:checked]:bg-rose-50 has-[:checked]:border-rose-400 has-[:checked]:text-rose-700 font-medium">
+                            <input type="radio" name="txType" value="expense" class="hidden">
+                            <i class="fa-solid fa-arrow-up-right"></i> รายจ่าย (Expense)
+                        </label>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block font-semibold text-slate-700 mb-1">ชื่อรายการ / คำอธิบาย</label>
+                    <input type="text" id="txTitle" required placeholder="เช่น ค่าอาหารกลางวัน, เงินเดือน" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-purple-200 text-xs">
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">จำนวนเงิน (บาท)</label>
+                        <input type="number" step="0.01" id="txAmount" required placeholder="0.00" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-purple-200 text-xs">
+                    </div>
+                    <div>
+                        <label class="block font-semibold text-slate-700 mb-1">หมวดหมู่</label>
+                        <select id="txCategory" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-purple-200 text-xs text-slate-700 font-medium">
+                            <option value="อาหาร & เครื่องดื่ม">อาหาร & เครื่องดื่ม</option>
+                            <option value="ช้อปปิ้ง & ความบันเทิง">ช้อปปิ้ง & ความบันเทิง</option>
+                            <option value="เดินทาง & น้ำมัน">เดินทาง & น้ำมัน</option>
+                            <option value="เงินเดือน & โบนัส">เงินเดือน & โบนัส</option>
+                            <option value="อื่นๆ">อื่นๆ</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block font-semibold text-slate-700 mb-1">ช่องทางบันทึก</label>
+                    <select id="txChannel" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-purple-200 text-xs text-slate-700">
+                        <option value="LINE OA Bot">LINE Official Account (แชต)</option>
+                        <option value="LIFF Form">LIFF Mobile Web Form</option>
+                        <option value="Web Dashboard">Web Admin Dashboard</option>
+                    </select>
+                </div>
+
+                <div class="pt-3 flex gap-3">
+                    <button type="button" onclick="closeTransactionModal()" class="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50 transition-all">ยกเลิก</button>
+                    <button type="submit" class="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-semibold transition-all shadow-md shadow-purple-200">บันทึกข้อมูล</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- JAVASCRIPT LOGIC -->
+    <script>
+        // Initial App Data State
+        let state = {
+            transactions: [
+                { id: 1, title: 'เงินเดือนประจำเดือน', type: 'income', amount: 45000, category: 'เงินเดือน & โบนัส', channel: 'LINE OA Bot', date: '2026-03-01 09:00' },
+                { id: 2, title: 'สแกนสลิป ค่ามื้อเย็นสเต๊ก', type: 'expense', amount: 850, category: 'อาหาร & เครื่องดื่ม', channel: 'LINE OA Bot', date: '2026-03-02 19:30' },
+                { id: 3, title: 'เติมน้ำมัน ปตท.', type: 'expense', amount: 1200, category: 'เดินทาง & น้ำมัน', channel: 'LIFF Form', date: '2026-03-03 14:15' },
+                { id: 4, title: 'ซื้อของเข้าบ้าน Uniqlo', type: 'expense', amount: 2450, category: 'ช้อปปิ้ง & ความบันเทิง', channel: 'LINE OA Bot', date: '2026-03-04 16:45' },
+                { id: 5, title: 'รับเงินโอนค่าสอนพิเศษ', type: 'income', amount: 5000, category: 'เงินเดือน & โบนัส', channel: 'LINE OA Bot', date: '2026-03-05 11:20' }
+            ],
+            goals: [
+                { id: 1, title: 'ออมเงินเที่ยวญี่ปุ่น 🇯🇵', target: 50000, current: 35000, color: 'purple' },
+                { id: 2, title: 'กองทุนสำรองฉุกเฉิน 🛡️', target: 100000, current: 75000, color: 'emerald' },
+                { id: 3, title: 'ซื้อ iPad Pro ใหม่ 📱', target: 38000, current: 18000, color: 'pink' }
+            ]
+        };
+
+        let financialChartInstance = null;
+        let categoryChartInstance = null;
+
+        // On Page Load
+        window.addEventListener('DOMContentLoaded', () => {
+            renderDashboard();
+            renderAllTransactions();
+            renderGoals();
+            initCharts();
+        });
+
+        // Tab Switcher Logic
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.nav-btn').forEach(el => {
+                el.classList.remove('bg-purple-50', 'text-purple-700', 'shadow-sm');
+                el.classList.add('text-slate-500');
+            });
+
+            document.getElementById(`tab-${tabId}`).classList.remove('hidden');
+            const activeNav = document.getElementById(`nav-${tabId}`);
+            if (activeNav) {
+                activeNav.classList.add('bg-purple-50', 'text-purple-700', 'shadow-sm');
+                activeNav.classList.remove('text-slate-500');
+            }
+
+            // Update Header Title
+            const titleMap = {
+                'dashboard': 'ภาพรวมการเงิน (Overview)',
+                'transactions': 'ประวัติและรายการบันทึก (Transactions)',
+                'line-sim': 'LINE OA Bot Simulator (ทดสอบแชต)',
+                'goals': 'เป้าหมายออมเงิน (Savings Goals)',
+                'ai-advisor': 'AI Financial Coach (วิเคราะห์ด้วย AI)',
+                'settings': 'ตั้งค่า LINE OA Webhook & LIFF'
+            };
+            document.getElementById('page-title').innerText = titleMap[tabId] || 'FinFlow Dashboard';
+        }
+
+        // Render Dashboard Metrics & Tables
+        function renderDashboard() {
+            let totalIncome = state.transactions.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
+            let totalExpense = state.transactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0);
+            let balance = 120000 + totalIncome - totalExpense;
+
+            document.getElementById('dash-balance').innerText = `฿ ${balance.toLocaleString('th-TH', {minimumFractionDigits: 2})}`;
+            document.getElementById('dash-income').innerText = `฿ ${totalIncome.toLocaleString('th-TH', {minimumFractionDigits: 2})}`;
+            document.getElementById('dash-expense').innerText = `฿ ${totalExpense.toLocaleString('th-TH', {minimumFractionDigits: 2})}`;
+
+            // Recent Table
+            const recentContainer = document.getElementById('recent-transactions-list');
+            recentContainer.innerHTML = '';
+
+            state.transactions.slice(0, 5).forEach(item => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-50/60 transition-colors';
+                const isIncome = item.type === 'income';
+
+                tr.innerHTML = `
+                    <td class="py-3.5 font-semibold text-slate-800 flex items-center gap-2.5">
+                        <div class="w-8 h-8 rounded-xl ${isIncome ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'} flex items-center justify-center text-xs">
+                            <i class="fa-solid ${isIncome ? 'fa-arrow-down-left' : 'fa-arrow-up-right'}"></i>
+                        </div>
+                        ${item.title}
+                    </td>
+                    <td class="py-3.5 text-slate-500">
+                        <span class="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-md ${item.channel.includes('LINE') ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-slate-100 text-slate-600'} font-medium">
+                            <i class="fa-brands fa-line"></i> ${item.channel}
+                        </span>
+                    </td>
+                    <td class="py-3.5 text-slate-600">${item.category}</td>
+                    <td class="py-3.5 text-slate-400 text-[11px]">${item.date}</td>
+                    <td class="py-3.5 text-right font-bold ${isIncome ? 'text-emerald-600' : 'text-slate-800'}">
+                        ${isIncome ? '+' : '-'}฿${item.amount.toLocaleString()}
+                    </td>
+                `;
+                recentContainer.appendChild(tr);
+            });
+        }
+
+        // Render All Transactions
+        function renderAllTransactions() {
+            const container = document.getElementById('all-transactions-list');
+            container.innerHTML = '';
+
+            state.transactions.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-50/60 transition-colors';
+                const isIncome = item.type === 'income';
+
+                tr.innerHTML = `
+                    <td class="py-3.5 font-semibold text-slate-800">${item.title}</td>
+                    <td class="py-3.5 text-slate-500">${item.channel}</td>
+                    <td class="py-3.5 text-slate-600">${item.category}</td>
+                    <td class="py-3.5 text-slate-400 text-[11px]">${item.date}</td>
+                    <td class="py-3.5 text-right font-bold ${isIncome ? 'text-emerald-600' : 'text-slate-800'}">
+                        ${isIncome ? '+' : '-'}฿${item.amount.toLocaleString()}
+                    </td>
+                    <td class="py-3.5 text-center">
+                        <button onclick="deleteTx(${item.id})" class="text-slate-400 hover:text-rose-500 p-1">
+                            <i class="fa-regular fa-trash-can"></i>
+                        </button>
+                    </td>
+                `;
+                container.appendChild(tr);
+            });
+        }
+
+        function filterTransactions() {
+            const q = document.getElementById('searchTx').value.toLowerCase();
+            const type = document.getElementById('typeFilter').value;
+
+            const filtered = state.transactions.filter(t => {
+                const matchQ = t.title.toLowerCase().includes(q) || t.category.toLowerCase().includes(q);
+                const matchType = type === 'all' ? true : t.type === type;
+                return matchQ && matchType;
+            });
+
+            const container = document.getElementById('all-transactions-list');
+            container.innerHTML = '';
+            filtered.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-50/60 transition-colors';
+                const isIncome = item.type === 'income';
+
+                tr.innerHTML = `
+                    <td class="py-3.5 font-semibold text-slate-800">${item.title}</td>
+                    <td class="py-3.5 text-slate-500">${item.channel}</td>
+                    <td class="py-3.5 text-slate-600">${item.category}</td>
+                    <td class="py-3.5 text-slate-400 text-[11px]">${item.date}</td>
+                    <td class="py-3.5 text-right font-bold ${isIncome ? 'text-emerald-600' : 'text-slate-800'}">
+                        ${isIncome ? '+' : '-'}฿${item.amount.toLocaleString()}
+                    </td>
+                    <td class="py-3.5 text-center">
+                        <button onclick="deleteTx(${item.id})" class="text-slate-400 hover:text-rose-500 p-1">
+                            <i class="fa-regular fa-trash-can"></i>
+                        </button>
+                    </td>
+                `;
+                container.appendChild(tr);
+            });
+        }
+
+        // Delete Transaction
+        function deleteTx(id) {
+            state.transactions = state.transactions.filter(t => t.id !== id);
+            renderDashboard();
+            renderAllTransactions();
+            updateChartData();
+            showToast('ลบรายการเรียบร้อยแล้ว', 'info');
+        }
+
+        // Render Goals
+        function renderGoals() {
+            const container = document.getElementById('goals-container');
+            container.innerHTML = '';
+
+            state.goals.forEach(goal => {
+                const percent = Math.min(100, Math.round((goal.current / goal.target) * 100));
+                const card = document.createElement('div');
+                card.className = `p-6 rounded-3xl bg-white border border-slate-100 shadow-soft space-y-4`;
+
+                card.innerHTML = `
+                    <div class="flex items-center justify-between">
+                        <h4 class="font-bold text-slate-800 text-sm">${goal.title}</h4>
+                        <span class="text-xs font-bold text-purple-600 bg-purple-50 px-2.5 py-1 rounded-full">${percent}%</span>
+                    </div>
+                    <div>
+                        <div class="flex justify-between text-xs text-slate-500 mb-1">
+                            <span>สะสมได้: ฿${goal.current.toLocaleString()}</span>
+                            <span>เป้าหมาย: ฿${goal.target.toLocaleString()}</span>
+                        </div>
+                        <div class="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
+                            <div class="bg-gradient-to-r from-purple-400 to-indigo-500 h-full rounded-full transition-all duration-500" style="width: ${percent}%"></div>
+                        </div>
+                    </div>
+                    <button onclick="addGoalProgress(${goal.id})" class="w-full text-xs font-semibold py-2 bg-slate-50 hover:bg-purple-50 hover:text-purple-600 text-slate-600 border border-slate-200 rounded-xl transition-all">
+                        + สะสมเงินออมเพิ่ม 1,000฿
+                    </button>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function addGoalProgress(id) {
+            const goal = state.goals.find(g => g.id === id);
+            if(goal) {
+                goal.current += 1000;
+                renderGoals();
+                showToast(`ออมเงินเข้าเป้าหมาย "${goal.title}" เพิ่ม 1,000 บาท! 🎉`, 'success');
+            }
+        }
+
+        // Modals Logic
+        function openTransactionModal() {
+            document.getElementById('txModal').classList.remove('hidden');
+        }
+        function closeTransactionModal() {
+            document.getElementById('txModal').classList.add('hidden');
+        }
+
+        function handleTransactionSubmit(e) {
+            e.preventDefault();
+            const type = document.querySelector('input[name="txType"]:checked').value;
+            const title = document.getElementById('txTitle').value;
+            const amount = parseFloat(document.getElementById('txAmount').value);
+            const category = document.getElementById('txCategory').value;
+            const channel = document.getElementById('txChannel').value;
+
+            const now = new Date();
+            const dateStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+
+            const newTx = {
+                id: Date.now(),
+                title,
+                type,
+                amount,
+                category,
+                channel,
+                date: dateStr
+            };
+
+            state.transactions.unshift(newTx);
+            renderDashboard();
+            renderAllTransactions();
+            updateChartData();
+            closeTransactionModal();
+            document.getElementById('txForm').reset();
+            showToast('บันทึกรายการสำเร็จผ่านระบบ', 'success');
+        }
+
+        // LINE Chatbot Simulator Functions
+        function sendLineMessage() {
+            const input = document.getElementById('lineInput');
+            const msg = input.value.trim();
+            if (!msg) return;
+
+            appendChatMessage('user', msg);
+            input.value = '';
+
+            // Bot Processing Simulation
+            setTimeout(() => {
+                processLineBotLogic(msg);
+            }, 600);
+        }
+
+        function sendQuickMessage(text) {
+            document.getElementById('lineInput').value = text;
+            sendLineMessage();
+        }
+
+        function sendQuickSlipSim() {
+            appendChatMessage('user', '📷 [ส่งรูป Slip โอนเงิน 150.00 บาท]');
+            setTimeout(() => {
+                const now = new Date();
+                const dateStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+
+                state.transactions.unshift({
+                    id: Date.now(),
+                    title: 'สแกนสลิป ค่ากาแฟ Amazon',
+                    type: 'expense',
+                    amount: 150,
+                    category: 'อาหาร & เครื่องดื่ม',
+                    channel: 'LINE OCR Slip',
+                    date: dateStr
+                });
+                renderDashboard();
+                renderAllTransactions();
+                updateChartData();
+
+                appendChatMessage('bot', '✅ <b>ตรวจพบสลิปโอนเงิน! (OCR Success)</b><br>• รายการ: ค่ากาแฟ Amazon<br>• จำนวนเงิน: 150.00 บาท<br>• หมวดหมู่: อาหาร & เครื่องดื่ม<br><br>บันทึกเข้าพอร์ตให้เรียบร้อยแล้วครับ! 🎉');
+            }, 800);
+        }
+
+        function appendChatMessage(sender, text) {
+            const box = document.getElementById('chat-messages');
+            const wrapper = document.createElement('div');
+            wrapper.className = `flex items-start gap-2 chat-animate ${sender === 'user' ? 'justify-end' : ''}`;
+
+            if (sender === 'user') {
+                wrapper.innerHTML = `
+                    <div class="bg-emerald-500 text-white text-xs p-3 rounded-2xl rounded-tr-none max-w-[80%] shadow-sm leading-relaxed">
+                        ${text}
+                    </div>
+                `;
+            } else {
+                wrapper.innerHTML = `
+                    <div class="w-7 h-7 rounded-full bg-emerald-500 text-white flex items-center justify-center text-[10px] font-bold">FF</div>
+                    <div class="bg-white text-slate-800 text-xs p-3 rounded-2xl rounded-tl-none max-w-[80%] shadow-sm leading-relaxed">
+                        ${text}
+                    </div>
+                `;
+            }
+
+            box.appendChild(wrapper);
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function processLineBotLogic(text) {
+            const numMatch = text.match(/\d+/);
+            const amount = numMatch ? parseFloat(numMatch[0]) : null;
+
+            if (text.includes('สรุป') || text.includes('ยอด')) {
+                let exp = state.transactions.filter(t=>t.type==='expense').reduce((a,b)=>a+b.amount,0);
+                let inc = state.transactions.filter(t=>t.type==='income').reduce((a,b)=>a+b.amount,0);
+                appendChatMessage('bot',`📊 <b>สรุปการเงินปัจจุบัน</b><br>• รายรับรวม: ฿${inc.toLocaleString()}<br>• รายจ่ายรวม: ฿${exp.toLocaleString()}<br>• ยอดคงเหลือ: ฿${(120000+inc-exp).toLocaleString()}`);
+            } else if (text.includes('เป้าหมาย')) {
+                appendChatMessage('bot',`🎯 คุณมีเป้าหมายออมเงิน 3 รายการ อยู่ในระดับความสำเร็จเฉลี่ย <b>68%</b> ครับ! สามารถดูเพิ่มเติมได้ทางแอป Web App`);
+            } else if (amount) {
+                const isInc = text.includes('เงินเดือน') || text.includes('รับ') || text.includes('เข้า');
+                const now = new Date();
+                const dateStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+
+                state.transactions.unshift({
+                    id: Date.now(),
+                    title: text.replace(/\d+/g, '').trim() || 'บันทึกผ่านไลน์',
+                    type: isInc ? 'income' : 'expense',
+                    amount: amount,
+                    category: isInc ? 'เงินเดือน & โบนัส' : 'อาหาร & เครื่องดื่ม',
+                    channel: 'LINE OA Bot',
+                    date: dateStr
+                });
+
+                renderDashboard();
+                renderAllTransactions();
+                updateChartData();
+
+                appendChatMessage('bot', `บันทึกรายการ <b>"${text}"</b> เรียบร้อยแล้ว!<br>• จำนวน: ${amount.toLocaleString()} บาท<br>• ประเภท: ${isInc ? 'รายรับ 🟢' : 'รายจ่าย 🔴'}`);
+            } else {
+                appendChatMessage('bot', `ขออภัยครับ Bot ไม่เข้าใจคำสั่ง ลองพิมพ์ระบุจำนวนเงิน เช่น <b>"ก๋วยเตี๋ยว 50"</b> หรือส่ง Slip โอนเงินครับ`);
+            }
+        }
+
+        // Initialize Charts (Chart.js)
+        function initCharts() {
+            const ctx1 = document.getElementById('financialChart').getContext('2d');
+            financialChartInstance = new Chart(ctx1, {
+                type: 'bar',
+                data: {
+                    labels: ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.'],
+                    datasets: [
+                        {
+                            label: 'รายรับ (Income)',
+                            data: [52000, 48000, 65000, 50000, 55000, 60000],
+                            backgroundColor: '#A7F3D0',
+                            borderRadius: 8
+                        },
+                        {
+                            label: 'รายจ่าย (Expense)',
+                            data: [28000, 24000, 21450, 30000, 22000, 25000],
+                            backgroundColor: '#FBCFE8',
+                            borderRadius: 8
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'top', labels: { font: { family: 'Prompt' } } }
+                    },
+                    scales: {
+                        y: { border: { dash: [4, 4] }, grid: { color: '#F1F5F9' } },
+                        x: { grid: { display: false } }
+                    }
+                }
+            });
+
+            const ctx2 = document.getElementById('categoryChart').getContext('2d');
+            categoryChartInstance = new Chart(ctx2, {
+                type: 'doughnut',
+                data: {
+                    labels: ['อาหาร & เครื่องดื่ม', 'ช้อปปิ้ง', 'เดินทาง & น้ำมัน'],
+                    datasets: [{
+                        data: [8400, 5200, 3850],
+                        backgroundColor: ['#C084FC', '#F472B6', '#38BDF8'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    cutout: '70%'
+                }
+            });
+        }
+
+        function updateChartData() {
+            if (financialChartInstance) {
+                const totalExpense = state.transactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0);
+                financialChartInstance.data.datasets[1].data[2] = totalExpense;
+                financialChartInstance.update();
+            }
+        }
+
+        // Gemini AI API Integration
+        async function askGeminiAdvisor() {
+            const promptInput = document.getElementById('aiPromptInput').value.trim();
+            const responseBox = document.getElementById('aiResponseBox');
+            const responseText = document.getElementById('aiResponseText');
+            const askBtn = document.getElementById('aiAskBtn');
+
+            if (!promptInput) {
+                showToast('กรุณาใส่ข้อความคำถามเพื่อวิเคราะห์', 'info');
+                return;
+            }
+
+            askBtn.disabled = true;
+            askBtn.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i> กำลังวิเคราะห์...`;
+            responseBox.classList.remove('hidden');
+            responseText.innerHTML = `<p class="text-slate-400 italic">🤖 กำลังประมวลผลข้อมูลการเงินด้วย Gemini AI...</p>`;
+
+            const apiKey = ""; // Runtime key binding
+            const systemPrompt = "คุณคือที่ปรึกษาการเงินส่วนบุคคลผู้เชี่ยวชาญ สไตล์การตอบเป็นกันเอง ให้คำแนะนำสั้นๆ กระชับ เข้าใจง่าย ความยาว 2-3 ย่อหน้า พร้อมข้อเสนอแนะที่ทำได้จริง";
+
+            // Financial context summary from current app state
+            const totalIncome = state.transactions.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
+            const totalExpense = state.transactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0);
+            const userContext = `บริบทการเงินปัจจุบันของผู้ใช้: รายรับรวม = ${totalIncome} บาท, รายจ่ายรวม = ${totalExpense} บาท คำถามของผู้ใช้: "${promptInput}"`;
+
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: userContext }] }],
+                        systemInstruction: { parts: [{ text: systemPrompt }] }
+                    })
+                });
+
+                const data = await response.json();
+                const aiResult = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+                if (aiResult) {
+                    responseText.innerHTML = aiResult.replace(/\n/g, '<br>');
+                } else {
+                    responseText.innerHTML = `
+                        <p>จากการประเมินเบื้องต้น ยอดรายจ่ายของคุณคิดเป็นประมาณ 33% ของรายรับทั้งหมด ซึ่งอยู่ในเกณฑ์ดีเยี่ยม!</p>
+                        <p><b>ข้อแนะนำ:</b> คุณสามารถนำเงินส่วนเกินไปต่อยอดแผนการออมเงินเพื่อการลงทุน หรือทยอยเพิ่มงบออมเงินฉุกเฉินผ่านระบบไลน์ได้ทันทีครับ</p>
+                    `;
+                }
+            } catch (err) {
+                // Fallback mock advice if offline or rate limited
+                responseText.innerHTML = `
+                    <p class="font-medium text-slate-800">💡 คำแนะนำจากการประเมินด้วย AI:</p>
+                    <p>1. <b>ควบคุมหมวดอาหาร & เครื่องดื่ม:</b> ปัจจุบันคิดเป็นสัดส่วนหลัก ลองตั้งเป้าจำกัดงบไม่เกิน 250 บาท/วัน โดยตั้งแจ้งเตือนใน LINE OA</p>
+                    <p>2. <b>กฎ 50/30/20:</b> รายได้ของคุณ 65,000 บาท แนะนำแบ่งออมทันที 13,000 บาท (20%) ผ่านการตัดอัตโนมัติ</p>
+                `;
+            } finally {
+                askBtn.disabled = false;
+                askBtn.innerHTML = `<i class="fa-solid fa-sparkles"></i> <span>วิเคราะห์การเงิน</span>`;
+            }
+        }
+
+        // Toast Helper
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+
+            const colorClass = type === 'success' ? 'bg-emerald-500 text-white' : 'bg-slate-800 text-white';
+            const icon = type === 'success' ? 'fa-circle-check' : 'fa-info-circle';
+
+            toast.className = `${colorClass} px-4 py-3 rounded-2xl shadow-lg flex items-center gap-2 text-xs font-medium transition-all transform translate-y-2 pointer-events-auto`;
+            toast.innerHTML = `<i class="fa-solid ${icon}"></i> <span>${message}</span>`;
+
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', '-translate-y-2');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // Copy Helper
+        function copyToClipboard(text) {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+            showToast('คัดลอก Webhook URL เรียบร้อยแล้ว', 'success');
+        }
+    </script>
+</body>
+</html>
