@@ -1,26 +1,64 @@
 @import "tailwindcss";
+@import "@fortawesome/fontawesome-free/css/all.min.css";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f9fafd;
+  --foreground: #334155;
 }
 
+/* Ported from docs/mockup.html's inline `tailwind.config` (Tailwind v3 CDN
+   build) to Tailwind v4's CSS-first `@theme`. Utility names are unchanged:
+   e.g. `bg-pastel-purple`, `text-pastel-purple-dark`, `shadow-soft`. */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --font-sans: var(--font-prompt), var(--font-inter), ui-sans-serif, sans-serif;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-line: #00c73c;
+  --color-line-dark: #00b334;
+  --color-line-light: #e6f9ec;
+
+  --color-pastel-purple: #ebe4f8;
+  --color-pastel-purple-dark: #7c5cfc;
+  --color-pastel-pink: #fde2e4;
+  --color-pastel-pink-dark: #e06d8a;
+  --color-pastel-mint: #d8f3dc;
+  --color-pastel-mint-dark: #2d6a4f;
+  --color-pastel-blue: #e0f2fe;
+  --color-pastel-blue-dark: #0284c7;
+  --color-pastel-yellow: #fef9c3;
+  --color-pastel-yellow-dark: #d97706;
+  --color-pastel-bg: #f9fafd;
+  --color-pastel-card: #ffffff;
+
+  --shadow-soft: 0 10px 30px -5px rgba(180, 190, 215, 0.25);
+  --shadow-soft-lg: 0 20px 40px -10px rgba(160, 175, 210, 0.3);
+  --shadow-glow: 0 0 20px rgba(124, 92, 252, 0.25);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Custom scrollbar (ported from mockup) */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }

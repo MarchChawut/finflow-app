@@ -8,6 +8,41 @@
       "when": 1789378471528,
       "tag": "0000_hot_wild_child",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1789388393195,
+      "tag": "0001_romantic_rocket_raccoon",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789480238718,
+      "tag": "0002_ordinary_toad_men",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1789522501484,
+      "tag": "0003_daily_fat_cobra",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1789537884440,
+      "tag": "0004_nebulous_preak",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1789542992751,
+      "tag": "0005_amusing_black_queen",
+      "breakpoints": true
     }
   ]
 }
