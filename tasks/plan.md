@@ -292,8 +292,28 @@ real `LINE_CHANNEL_ACCESS_TOKEN` from Phase 3 (slip download needs it too).
       a real logged-in browser session — no real key was available this session.
 
 ## Phase 6 — Deploy
-- [ ] 6a `Dockerfile` (multi-stage Next.js production build)
-- [ ] 6b Cloudflare Tunnel wired to app container on the NAS
+Decided against the originally-sketched Dockerfile: the user chose to SSH into the NAS
+directly, `git pull` from GitHub, and run under **PM2** instead of a container. No SSH access
+to the NAS exists from this Mac, so the actual deploy commands have to be run by the user —
+this session prepared everything needed as a copy-paste runbook instead.
+- [x] 6a `ecosystem.config.cjs` (PM2 process definition, port 4005 matching the existing dev
+      convention) + `docs/deploy-synology.md` (full runbook: get the code, production `.env`
+      checklist — with a loud warning that `ENCRYPTION_KEY` must be copied byte-for-byte from
+      the working `.env`, since it's what already-saved family LINE OA/Gemini credentials in
+      the real DB are encrypted with — build, migrate, PM2 start/save/startup, an optional
+      Task Scheduler recipe for the monthly savings reminder, and troubleshooting notes).
+- [ ] 6b Cloudflare Tunnel wired to the app on the NAS. Confirmed via `cloudflared tunnel
+      list`/`info` (same Cloudflare account, run from this Mac) that a tunnel named
+      `fim-family-app` already has a live connector running **on the NAS itself** — this is
+      the one earlier phases' notes called "reserved for the real Phase 6 deployment," and
+      `finflow.code-n-fun-house.top` was routed to it before being deliberately moved to the
+      dev tunnel (`fin-fam-local-dev`) for local testing. **Not yet done:** the user still
+      needs to run `docs/deploy-synology.md`'s steps on the NAS (start the app under PM2,
+      point `fim-family-app`'s ingress at `http://localhost:4005`, reload the connector) —
+      once confirmed working locally on the NAS, the DNS switch itself
+      (`cloudflared tunnel route dns fim-family-app finflow.code-n-fun-house.top
+      --overwrite-dns`) is a single command this Mac can run directly, deliberately saved for
+      last so the live domain never points at a tunnel with no correct route in between.
 
 ## Phase 7 — Seed
 - [x] 7a `lib/db/seed.ts` (`pnpm db:seed`) — 4 categories, 5 transactions, 3 savings goals ported
