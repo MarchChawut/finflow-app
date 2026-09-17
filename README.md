@@ -1,36 +1,92 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# FinFlow
 
-## Getting Started
+แอปจัดการการเงินครอบครัวที่เชื่อมกับ LINE Official Account — บันทึกรายรับ-รายจ่ายผ่านแชต, สแกนสลิปด้วย OCR, ตั้งเป้าหมายออมเงิน, และถาม AI โค้ช (Gemini) เกี่ยวกับการเงินของครอบครัว
 
-First, run the development server:
+รองรับหลายครอบครัวในระบบเดียวกัน (multi-tenant) — ข้อมูลของแต่ละครอบครัวแยกจากกันโดยสมบูรณ์ และแต่ละครอบครัวผูก LINE OA ของตัวเองได้อิสระ
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## เริ่มต้นใช้งาน (สำหรับติดตั้ง/พัฒนา)
+
+**สิ่งที่ต้องมีก่อน:** Node.js, pnpm, ฐานข้อมูล PostgreSQL ที่เข้าถึงได้, และ Google Cloud project ที่เปิด OAuth ไว้ (สำหรับ sign-in)
+
+1. คัดลอก `.env.example` เป็น `.env` แล้วกรอกค่าอย่างน้อย: `DATABASE_URL`, `AUTH_SECRET` (`openssl rand -base64 32`), `AUTH_URL` (โดเมนที่รันจริง), `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`, `ENCRYPTION_KEY` (`openssl rand -base64 32`)
+2. ติดตั้ง dependency: `pnpm install`
+3. รัน migration เพื่อสร้างตารางในฐานข้อมูล: `pnpm db:migrate`
+4. (ไม่บังคับ) ใส่ข้อมูลตัวอย่างไว้ลองใช้: `pnpm db:seed`
+5. รันเซิร์ฟเวอร์: `pnpm dev` แล้วเปิด [http://localhost:4005](http://localhost:4005)
+
+## เข้าสู่ระบบและครอบครัว
+
+เข้าสู่ระบบด้วย Google เท่านั้น
+
+- **อีเมลที่ไม่เคยมีใครเชิญมาก่อน** → ระบบสร้างครอบครัวใหม่ให้อัตโนมัติ และตั้งให้เป็น **แอดมิน/โฮส** ของครอบครัวนั้นทันที
+- **อีเมลที่ถูกเชิญไว้แล้ว** → เข้าร่วมครอบครัวของผู้เชิญในฐานะสมาชิก (Member)
+
+การเชิญสมาชิกใหม่ทำได้ที่หน้า **สมาชิกครอบครัว** (`/family`) — เฉพาะแอดมินเท่านั้นที่เชิญได้ กรอกอีเมลแล้วกด "เชิญ" ระบบจะสร้าง QR code + ลิงก์เข้าสู่ระบบให้ ส่งให้สมาชิกสแกน/เปิดแล้ว sign-in ด้วย Google อีเมลเดียวกับที่ถูกเชิญ ก็จะเข้าครอบครัวเดียวกันทันที
+
+## ฟีเจอร์หลัก
+
+| หน้า | ใช้ทำอะไร |
+|---|---|
+| `/` (แดชบอร์ด) | ภาพรวมยอดคงเหลือ รายรับ-รายจ่ายเดือนนี้ กราฟ หมวดหมู่ที่ใช้จ่ายเยอะสุด |
+| `/transactions` | ดู/ค้นหา/เพิ่ม/แก้ไข/ลบรายการ, ส่งออก CSV ได้ที่ `/settings` |
+| `/goals` | สร้างเป้าหมายออมเงิน, เติมเงินเข้าเป้าหมาย |
+| `/family` | จัดการสมาชิก, เปลี่ยนบทบาท (Admin/Member), เชิญสมาชิกใหม่ |
+| `/tools` | เครื่องมือคำนวณ: ดอกเบี้ยแบบธรรมดา/ทบต้น, เงินออมต่องวด, สัดส่วนงบประมาณ |
+| `/ai-advisor` | ถาม AI โค้ช (Gemini) เกี่ยวกับการเงินของครอบครัว — ต้องตั้งค่า API key ก่อน (ดูด้านล่าง) |
+| `/settings` | หมวดหมู่, ช่วงเวลาใช้งาน, ส่งออก CSV, เชื่อมต่อ LINE OA, ตั้งค่า AI โค้ช, แจ้งเตือนออมเงิน |
+
+## เชื่อมต่อ LINE Official Account ของครอบครัวตัวเอง (แอดมินเท่านั้น)
+
+แต่ละครอบครัวผูก LINE OA ของตัวเองแยกกัน — ไม่มีการใช้ช่องทางร่วมกับครอบครัวอื่น
+
+1. สมัคร/มี Messaging API channel ของตัวเองใน [LINE Developers Console](https://developers.line.biz/console/) อยู่แล้ว
+2. ไปที่ `/settings` → การ์ด **"LINE Official Account ของครอบครัวนี้"** → กรอก **Channel Access Token** และ **Channel Secret** (หาได้จากแท็บ Basic settings/Messaging API ของช่องทาง) แล้วกดบันทึก
+3. คัดลอก **Webhook URL** ที่แสดงในหน้าเดียวกัน (มีรหัสเฉพาะของครอบครัวคุณต่อท้าย) ไปวางใน LINE Developers Console → Messaging API tab → Webhook settings → เปิดใช้งาน Webhook
+4. สร้าง LIFF app 2 ตัวในช่องทางเดียวกัน (LINE Developers Console → LIFF tab → Add):
+   - ตัวที่ 1 สำหรับผูกบัญชี — Endpoint URL: `<โดเมนของคุณ>/liff`
+   - ตัวที่ 2 สำหรับบันทึกจดเงินด่วน — Endpoint URL: `<โดเมนของคุณ>/liff/quick-record`
+   
+   นำ LIFF ID ทั้งสองมากรอกในการ์ดเดียวกันที่ `/settings`
+5. สมาชิกแต่ละคนไปที่ `/settings` → "บัญชีไลน์ของคุณ" → กดเชื่อมต่อ → เปิดลิงก์ที่ได้ **จากในแอป LINE** เพื่อผูกบัญชีของตัวเอง
+6. (แอดมิน) กด **"ตั้งค่า Rich Menu"** ที่ `/settings` เพื่อสร้างเมนูด่วน 6 ปุ่มใต้ช่องแชตให้บอทอัตโนมัติ
+
+**วิธีใช้บอทหลังเชื่อมต่อแล้ว** (แชตคุยกับ LINE OA ได้เลย):
+- พิมพ์รายการพร้อมจำนวนเงิน เช่น `กาแฟ 60` หรือ `เงินเดือนเข้า 45000` → บันทึกอัตโนมัติ
+- ส่งรูปสลิปโอนเงิน → ระบบอ่านยอดด้วย OCR ให้ (ต้องตั้งค่า `GOOGLE_APPLICATION_CREDENTIALS` ฝั่งเซิร์ฟเวอร์)
+- พิมพ์ข้อความที่มีคำว่า "เงินออม"/"ออมเงิน"/"เป้าหมาย" พร้อมชื่อเป้าหมาย → เติมเงินเข้าเป้าหมายออมนั้นให้อัตโนมัติ
+- พิมพ์ `สรุปยอดวันนี้` หรือ `เป้าหมายออมเงิน` → บอทตอบสรุปกลับทันที
+
+## AI โค้ชการเงิน (Gemini)
+
+แต่ละครอบครัวใช้ API key ของตัวเอง ไม่มีการแชร์คีย์กลาง — ครอบครัวไหนยังไม่กรอกจะยังใช้ฟีเจอร์นี้ไม่ได้
+
+1. ขอ API key ฟรีที่ [Google AI Studio](https://aistudio.google.com/apikey)
+2. ไปที่ `/settings` → การ์ด **"AI โค้ช (Gemini)"** → วางคีย์แล้วบันทึก (แอดมินเท่านั้น)
+3. ไปที่ `/ai-advisor` แล้วพิมพ์คำถาม เช่น "แนะนำวิธีลดค่าอาหาร 20% ในเดือนนี้หน่อย" — AI จะวิเคราะห์จากตัวเลขจริงของครอบครัวคุณ (จำกัด 1 คำถามต่อ 15 วินาทีต่อครอบครัว กันการกดรัว)
+
+## ตั้งเวลาแจ้งเตือนออมเงินรายเดือนอัตโนมัติ
+
+สวิตช์ที่ `/settings` (การ์ด "แจ้งเตือนออมเงินผ่าน LINE รายเดือน") กำหนดแค่ว่า "อนุญาตให้ส่งไหม" — การส่งจริงทุกเดือนต้องมีตัวเรียกจากภายนอก (เช่น cron บนเซิร์ฟเวอร์) ยิงไปที่:
+
+```
+GET /api/cron/savings-reminder
+Header: X-Cron-Secret: <ค่าเดียวกับ CRON_SECRET ใน .env>
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+หรือจะกดปุ่ม "ส่งตอนนี้เลย" ในหน้าเดียวกันเพื่อส่งด้วยมือก็ได้
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## คำสั่งที่ใช้บ่อย
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| คำสั่ง | ใช้ทำอะไร |
+|---|---|
+| `pnpm dev` | รันเซิร์ฟเวอร์พัฒนา ที่พอร์ต 4005 |
+| `pnpm build` | build สำหรับ production |
+| `pnpm lint` | ตรวจโค้ดด้วย ESLint |
+| `pnpm db:generate` | สร้างไฟล์ migration จาก schema ที่แก้ไข |
+| `pnpm db:migrate` | รัน migration เข้าฐานข้อมูลจริง |
+| `pnpm db:studio` | เปิด Drizzle Studio ดู/แก้ข้อมูลในฐานข้อมูล |
+| `pnpm db:seed` | ใส่ข้อมูลตัวอย่าง (หมวดหมู่/รายการ/เป้าหมาย) |
 
-## Learn More
+## สถานะโปรเจกต์
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+ดูรายละเอียดความคืบหน้าแต่ละเฟสได้ที่ [`tasks/plan.md`](tasks/plan.md) — ฟีเจอร์หลักทั้งหมดเสร็จแล้ว เหลือแค่ Phase 6 (บรรจุแอปเป็น Docker image + ตั้งค่า deploy ถาวร) ที่ยังไม่ได้ทำ
