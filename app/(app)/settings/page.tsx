@@ -3,16 +3,19 @@ import { getSession } from "@/lib/session";
 import { getLineBindingStatus } from "@/lib/data/line";
 import { getCategories } from "@/lib/data/transactions";
 import { getUsagePeriod, getSavingsReminderEnabled } from "@/lib/data/appSettings";
+import { getFamilyLineSettings } from "@/lib/data/families";
 import { Header } from "@/components/Header";
 import { CopyButton } from "@/components/CopyButton";
 import { LineConnectionToggle } from "@/components/LineConnectionToggle";
+import { LineCredentialsForm } from "@/components/LineCredentialsForm";
+import { GeminiApiKeyForm } from "@/components/GeminiApiKeyForm";
 import { SetupRichMenuButton } from "@/components/SetupRichMenuButton";
 import { CategoriesManager } from "@/components/CategoriesManager";
 import { UsagePeriodCard } from "@/components/UsagePeriodCard";
 import { SavingsReminderCard } from "@/components/SavingsReminderCard";
 
 export default async function SettingsPage() {
-  const [session, { lineUserId }, requestHeaders, categories, usagePeriod, reminderEnabled] =
+  const [session, { lineUserId }, requestHeaders, categories, usagePeriod, reminderEnabled, lineSettings] =
     await Promise.all([
       getSession(),
       getLineBindingStatus(),
@@ -20,15 +23,17 @@ export default async function SettingsPage() {
       getCategories(),
       getUsagePeriod(),
       getSavingsReminderEnabled(),
+      getFamilyLineSettings(),
     ]);
   const user = session!.user;
 
   // Derived from the actual incoming request rather than a fixed env var,
   // so it's correct whether this is running on localhost, a cloudflared
-  // quick tunnel, or the real deployment.
+  // quick tunnel, or the real deployment. The webhookSlug identifies this
+  // family's channel to the webhook route before any signature is checked.
   const proto = requestHeaders.get("x-forwarded-proto") ?? "http";
   const host = requestHeaders.get("host") ?? "localhost:4005";
-  const webhookUrl = `${proto}://${host}/api/line/webhook`;
+  const webhookUrl = `${proto}://${host}/api/line/webhook/${lineSettings.webhookSlug}`;
 
   return (
     <>
@@ -61,6 +66,13 @@ export default async function SettingsPage() {
             LINE Official Account
           </h2>
         </div>
+
+        <LineCredentialsForm
+          hasAccessToken={lineSettings.hasAccessToken}
+          hasChannelSecret={lineSettings.hasChannelSecret}
+          liffId={lineSettings.liffId}
+          liffIdQuickRecord={lineSettings.liffIdQuickRecord}
+        />
 
         <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-soft">
           <h3 className="font-bold text-slate-800 text-sm mb-1">
@@ -112,6 +124,14 @@ export default async function SettingsPage() {
           </p>
           <SetupRichMenuButton />
         </div>
+
+        <div className="pt-2">
+          <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">
+            AI โค้ช
+          </h2>
+        </div>
+
+        <GeminiApiKeyForm hasApiKey={lineSettings.hasGeminiApiKey} />
       </div>
     </>
   );

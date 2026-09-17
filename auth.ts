@@ -3,24 +3,14 @@ import Google from "next-auth/providers/google";
 import { DrizzleAdapter } from "@auth/drizzle-adapter";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { users, accounts, sessions, verificationTokens, invitedEmails } from "@/lib/db/schema";
-
-// Family circle allowlist — only these emails may sign in at all. Anyone in
-// the list still starts as role MEMBER (schema default); promotion to ADMIN
-// is a manual DB update for now (no admin UI exists yet).
-//
-// Two sources, both checked on sign-in:
-// - ADMIN_ALLOWED_EMAILS (env): bootstrap list, so the first admin can never
-//   lock themselves out even if the DB is empty/unreachable.
-// - invitedEmails (DB): emails added from the Settings UI (see
-//   lib/actions/invites.ts), so inviting someone doesn't require an env edit
-//   + server restart.
-const envAllowedEmails = new Set(
-  (process.env.ADMIN_ALLOWED_EMAILS ?? "")
-    .split(",")
-    .map((email) => email.trim().toLowerCase())
-    .filter(Boolean),
-);
+import {
+  users,
+  accounts,
+  sessions,
+  verificationTokens,
+  invitedEmails,
+  families,
+} from "@/lib/db/schema";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   adapter: DrizzleAdapter(db, {
@@ -41,31 +31,72 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   // signIn write path.
   session: { strategy: "jwt" },
   callbacks: {
+    // Multi-tenant sign-up: anyone with a Google account can sign in (no
+    // email allowlist anymore — that gate is gone now that each family is
+    // its own tenant instead of the whole app being one shared family). What
+    // matters is which *family* a new user lands in, resolved here right
+    // after the adapter creates their row and before sign-in completes:
+    //   - an email with a pending invite (lib/actions/invites.ts) joins that
+    //     inviter's family as a MEMBER, and the invite is consumed
+    //   - anyone else gets a brand-new family and becomes its ADMIN (host)
+    // A *returning* user already has a familyId, so this is a no-op for them.
     async signIn({ user }) {
-      if (!user.email) return false;
+      if (!user.email || !user.id) return false;
       const email = user.email.toLowerCase();
-      if (envAllowedEmails.has(email)) return true;
-      const invited = await db.query.invitedEmails.findFirst({
+
+      const existing = await db.query.users.findFirst({
+        where: eq(users.id, user.id),
+        columns: { familyId: true },
+      });
+      if (!existing) return false; // adapter should have created the row by now
+      if (existing.familyId) return true; // already resolved — returning user
+
+      const invite = await db.query.invitedEmails.findFirst({
         where: eq(invitedEmails.email, email),
       });
-      return Boolean(invited);
+
+      if (invite) {
+        await db
+          .update(users)
+          .set({ familyId: invite.familyId, role: "MEMBER" })
+          .where(eq(users.id, user.id));
+        await db.delete(invitedEmails).where(eq(invitedEmails.email, email));
+      } else {
+        const [newFamily] = await db.insert(families).values({}).returning({ id: families.id });
+        await db
+          .update(users)
+          .set({ familyId: newFamily.id, role: "ADMIN" })
+          .where(eq(users.id, user.id));
+      }
+
+      return true;
     },
     // `user` is only populated on initial sign-in (from the adapter's
-    // createUser/getUser); persist what later requests need onto the token.
+    // createUser/getUser) — re-fetch fresh from the DB rather than trust
+    // `user.role`/a familyId on this object: the signIn callback above may
+    // have just written role/familyId for a brand-new user, and `user` here
+    // is a snapshot from before that write.
     async jwt({ token, user }) {
-      if (user) {
+      if (user?.id) {
+        const dbUser = await db.query.users.findFirst({
+          where: eq(users.id, user.id),
+          columns: { role: true, familyId: true },
+        });
         token.id = user.id;
-        token.role = user.role;
+        token.role = dbUser?.role ?? "MEMBER";
+        token.familyId = dbUser?.familyId ?? undefined;
       }
       return token;
     },
     async session({ session, token }) {
-      // token.id/token.role are optional on the JWT type (only set once the
-      // jwt() callback above has run at least once); narrow before writing
-      // them into session.user's non-optional fields.
-      if (session.user && token.id) {
+      // Require familyId too, not just id — a session without a resolved
+      // family shouldn't be treated as valid (see verifySession()'s
+      // `!session?.user?.id` check in lib/dal.ts, which this keeps working
+      // correctly: no id set here means no session, same as before).
+      if (session.user && token.id && token.familyId) {
         session.user.id = token.id;
         session.user.role = token.role ?? "MEMBER";
+        session.user.familyId = token.familyId;
       }
       return session;
     },

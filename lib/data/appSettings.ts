@@ -1,6 +1,6 @@
 import "server-only";
 import { cache } from "react";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { appSettings } from "@/lib/db/schema";
 import { verifySession } from "@/lib/dal";
@@ -19,12 +19,12 @@ function defaultExpiresAt(): Date {
 }
 
 export const getUsagePeriod = cache(async () => {
-  await verifySession();
+  const user = await verifySession();
 
   const [row] = await db
     .select()
     .from(appSettings)
-    .where(eq(appSettings.key, "usage_period_expires_at"));
+    .where(and(eq(appSettings.familyId, user.familyId), eq(appSettings.key, "usage_period_expires_at")));
 
   const expiresAt = row ? new Date(row.value) : defaultExpiresAt();
 
@@ -32,11 +32,11 @@ export const getUsagePeriod = cache(async () => {
 });
 
 export const getSavingsReminderEnabled = cache(async () => {
-  await verifySession();
+  const user = await verifySession();
   const [row] = await db
     .select()
     .from(appSettings)
-    .where(eq(appSettings.key, "savings_reminder_enabled"));
+    .where(and(eq(appSettings.familyId, user.familyId), eq(appSettings.key, "savings_reminder_enabled")));
   return row?.value === "true";
 });
 
@@ -44,11 +44,11 @@ export const getFamilyBudgetSettings = cache(async (): Promise<{
   income: string;
   parts: BudgetRatioPart[];
 }> => {
-  await verifySession();
+  const user = await verifySession();
   const [row] = await db
     .select()
     .from(appSettings)
-    .where(eq(appSettings.key, "family_budget_settings"));
+    .where(and(eq(appSettings.familyId, user.familyId), eq(appSettings.key, "family_budget_settings")));
 
   if (!row) {
     return { income: DEFAULT_INCOME, parts: DEFAULT_BUDGET_RATIO_PARTS };

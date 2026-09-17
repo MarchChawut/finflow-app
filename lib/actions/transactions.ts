@@ -1,7 +1,7 @@
 "use server";
 
 import * as z from "zod";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { transactions } from "@/lib/db/schema";
@@ -52,6 +52,7 @@ export async function createTransaction(
     categoryId: categoryId || null,
     note: note || null,
     createdById: user.id,
+    familyId: user.familyId,
   });
 
   revalidatePath("/");
@@ -64,7 +65,7 @@ export async function updateTransaction(
   _prevState: TransactionFormState,
   formData: FormData,
 ): Promise<TransactionFormState> {
-  await verifySession();
+  const user = await verifySession();
 
   const validated = TransactionSchema.safeParse({
     title: formData.get("title"),
@@ -90,7 +91,7 @@ export async function updateTransaction(
       categoryId: categoryId || null,
       note: note || null,
     })
-    .where(eq(transactions.id, id));
+    .where(and(eq(transactions.id, id), eq(transactions.familyId, user.familyId)));
 
   revalidatePath("/");
   revalidatePath("/transactions");
@@ -98,13 +99,15 @@ export async function updateTransaction(
 }
 
 export async function deleteTransaction(id: string) {
-  await verifySession();
-  await db.delete(transactions).where(eq(transactions.id, id));
+  const user = await verifySession();
+  await db
+    .delete(transactions)
+    .where(and(eq(transactions.id, id), eq(transactions.familyId, user.familyId)));
   revalidatePath("/");
   revalidatePath("/transactions");
 }
 
 export async function loadMoreTransactions(offset: number) {
-  await verifySession();
-  return fetchTransactionsPage(offset);
+  const user = await verifySession();
+  return fetchTransactionsPage(user.familyId, offset);
 }

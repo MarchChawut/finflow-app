@@ -31,7 +31,7 @@ export async function inviteFamilyMember(email: string): Promise<InviteResult> {
 
   await db
     .insert(invitedEmails)
-    .values({ email: normalized, invitedById: user.id })
+    .values({ email: normalized, invitedById: user.id, familyId: user.familyId })
     .onConflictDoNothing();
 
   revalidatePath("/family");

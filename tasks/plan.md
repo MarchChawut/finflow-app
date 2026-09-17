@@ -265,9 +265,31 @@ the NAS disk with no volume-mount story before Phase 6); `transactions.rawSlipUr
 `GOOGLE_APPLICATION_CREDENTIALS` pointing at its JSON key file, plus the still-outstanding
 real `LINE_CHANNEL_ACCESS_TOKEN` from Phase 3 (slip download needs it too).
 
-## Phase 5 — Gemini coach **[needs user input: GEMINI_API_KEY]**
-- [ ] 5a `lib/actions/coach.ts` Server Action + coach page (confirm current Gemini SDK package
-      name/model at implementation time — don't carry forward the mockup's placeholder values)
+## Phase 5 — Gemini coach **[needs user input: Gemini API key, per family via Settings]**
+- [x] 5a `lib/actions/coach.ts` Server Action + `/ai-advisor` page. Built on top of the
+      multi-tenant/per-family-credential pattern from Phase 2 (LINE OA): each family's host
+      enters their own Gemini API key at `/settings` (encrypted at rest, same
+      `lib/crypto/encryption.ts` as LINE credentials) — **no shared/global fallback key**, a
+      family with no key configured simply can't use the coach yet (role-aware message: ADMIN
+      gets a link to Settings, MEMBER is told to ask their admin).
+      SDK: `@google/genai@2.23.0` (current official unified SDK, confirmed via docs — not the
+      deprecated `@google/generative-ai`, and not the mockup's placeholder
+      `gemini-3-flash-preview`, which isn't a real model). Model: `gemini-2.5-flash`
+      (`lib/gemini/client.ts`'s `COACH_MODEL` constant), thinking budget disabled
+      (`thinkingConfig.thinkingBudget: 0`) since a few short paragraphs of advice doesn't need
+      it. `lib/gemini/prompt.ts`'s `buildFinancialContextText()` feeds the model real,
+      current family data (dashboard totals, category breakdown, recent transactions, savings
+      goals, budget ratio, recurring bills) instead of the mockup's fake in-memory sum — one
+      explicit prompt-injection boundary line added since transaction titles/notes are
+      free-text and user-controlled. A 15s per-family cooldown (stored in `app_settings`,
+      reusing its existing key/value upsert helper) protects the ADMIN's own key/quota from
+      being hammered by other members. Renamed `getFamilyLineCredentialsById` →
+      `getFamilySecretsById` in `lib/data/families.ts` since it now carries Gemini's
+      encrypted column too, not just LINE's (3 call sites updated).
+      `pnpm build`/`lint`/`tsc --noEmit` all clean; migration `drizzle/0008_concerned_bushwacker.sql`
+      (single nullable column, `families.gemini_api_key_encrypted`) applied to the real DB.
+      **Not yet done:** entering a real Gemini API key and clicking through `/ai-advisor` in
+      a real logged-in browser session — no real key was available this session.
 
 ## Phase 6 — Deploy
 - [ ] 6a `Dockerfile` (multi-stage Next.js production build)

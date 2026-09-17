@@ -2,7 +2,8 @@ import type { DefaultSession } from "next-auth";
 
 // Augments Auth.js's built-in types with the extra fields our DrizzleAdapter
 // schema (lib/db/schema.ts) and jwt/session callbacks (auth.ts) carry:
-// users.role, and users.id surfaced onto the session/token.
+// users.role, users.id, and users.familyId (the multi-tenant boundary —
+// every family-scoped query filters by this) surfaced onto the session/token.
 declare module "next-auth" {
   interface User {
     role?: "ADMIN" | "MEMBER";
@@ -12,6 +13,7 @@ declare module "next-auth" {
     user: {
       id: string;
       role: "ADMIN" | "MEMBER";
+      familyId: string;
     } & DefaultSession["user"];
   }
 }
@@ -33,5 +35,6 @@ declare module "@auth/core/jwt" {
   interface JWT {
     id?: string;
     role?: "ADMIN" | "MEMBER";
+    familyId?: string;
   }
 }

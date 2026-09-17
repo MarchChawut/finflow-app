@@ -1,7 +1,7 @@
 "use server";
 
 import * as z from "zod";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { recurringBills, transactions } from "@/lib/db/schema";
@@ -42,6 +42,7 @@ export async function createRecurringBill(
     amount: amount.toFixed(2),
     categoryId: categoryId || null,
     createdById: user.id,
+    familyId: user.familyId,
   });
 
   revalidatePath("/transactions");
@@ -53,7 +54,7 @@ export async function updateRecurringBill(
   _prevState: RecurringBillFormState,
   formData: FormData,
 ): Promise<RecurringBillFormState> {
-  await verifySession();
+  const user = await verifySession();
 
   const validated = RecurringBillSchema.safeParse({
     name: formData.get("name"),
@@ -70,15 +71,17 @@ export async function updateRecurringBill(
   await db
     .update(recurringBills)
     .set({ name, amount: amount.toFixed(2), categoryId: categoryId || null })
-    .where(eq(recurringBills.id, id));
+    .where(and(eq(recurringBills.id, id), eq(recurringBills.familyId, user.familyId)));
 
   revalidatePath("/transactions");
   return { success: true };
 }
 
 export async function deleteRecurringBill(id: string) {
-  await verifySession();
-  await db.delete(recurringBills).where(eq(recurringBills.id, id));
+  const user = await verifySession();
+  await db
+    .delete(recurringBills)
+    .where(and(eq(recurringBills.id, id), eq(recurringBills.familyId, user.familyId)));
   revalidatePath("/transactions");
 }
 
@@ -86,7 +89,7 @@ export async function markRecurringBillPaid(id: string) {
   const user = await verifySession();
 
   const bill = await db.query.recurringBills.findFirst({
-    where: eq(recurringBills.id, id),
+    where: and(eq(recurringBills.id, id), eq(recurringBills.familyId, user.familyId)),
   });
   if (!bill) return;
 
@@ -104,12 +107,13 @@ export async function markRecurringBillPaid(id: string) {
     channel: "DASHBOARD",
     categoryId: bill.categoryId,
     createdById: user.id,
+    familyId: user.familyId,
   });
 
   await db
     .update(recurringBills)
     .set({ lastPaidAt: new Date() })
-    .where(eq(recurringBills.id, id));
+    .where(and(eq(recurringBills.id, id), eq(recurringBills.familyId, user.familyId)));
 
   revalidatePath("/transactions");
   revalidatePath("/");

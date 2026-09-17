@@ -1,11 +1,14 @@
 import "server-only";
 import { cache } from "react";
+import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
+import { users } from "@/lib/db/schema";
 import { verifySession } from "@/lib/dal";
 
 export const getFamilyMembers = cache(async () => {
-  await verifySession();
+  const user = await verifySession();
   const rows = await db.query.users.findMany({
+    where: eq(users.familyId, user.familyId),
     columns: { id: true, email: true, name: true, role: true, lineUserId: true },
     orderBy: (u, { asc }) => [asc(u.createdAt)],
   });

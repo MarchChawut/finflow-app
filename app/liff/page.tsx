@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getSession } from "@/lib/session";
+import { getFamilyLineSettings } from "@/lib/data/families";
 import { LiffBinder } from "@/components/LiffBinder";
 
 // /liff is excluded from proxy.ts's matcher (it's opened inside LINE's
@@ -27,6 +28,8 @@ export default async function LiffPage() {
     );
   }
 
+  const { liffId } = await getFamilyLineSettings();
+
   return (
     <div className="min-h-screen w-full flex items-center justify-center px-4">
       <div className="w-full max-w-sm bg-white rounded-3xl shadow-soft-lg border border-slate-100 p-8 text-center">
@@ -37,7 +40,7 @@ export default async function LiffPage() {
         <p className="text-xs text-slate-400 mb-6">
           เชื่อมบัญชีไลน์ของคุณกับ {session.user.email} เพื่อบันทึกรายรับ-รายจ่ายผ่านแชตได้
         </p>
-        <LiffBinder />
+        <LiffBinder liffId={liffId} />
       </div>
     </div>
   );

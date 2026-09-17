@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { timingSafeEqual } from "crypto";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { appSettings } from "@/lib/db/schema";
 import { sendSavingsReminder } from "@/lib/line/reminder";
@@ -35,15 +35,31 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const [row] = await db
-    .select()
-    .from(appSettings)
-    .where(eq(appSettings.key, "savings_reminder_enabled"));
+  // Multi-tenant: each family opts in independently, so this loops over
+  // every family rather than reading one global setting. All families still
+  // send via the one shared LINE OA client until Phase 2 gives each family
+  // its own credentials.
+  const allFamilies = await db.query.families.findMany({ columns: { id: true } });
 
-  if (row?.value !== "true") {
-    return NextResponse.json({ ok: true, skipped: true, reason: "reminder disabled" });
+  let sent = 0;
+  let failed = 0;
+  let skipped = 0;
+
+  for (const family of allFamilies) {
+    const [row] = await db
+      .select()
+      .from(appSettings)
+      .where(and(eq(appSettings.familyId, family.id), eq(appSettings.key, "savings_reminder_enabled")));
+
+    if (row?.value !== "true") {
+      skipped++;
+      continue;
+    }
+
+    const result = await sendSavingsReminder(family.id);
+    sent += result.sent;
+    failed += result.failed;
   }
 
-  const result = await sendSavingsReminder();
-  return NextResponse.json({ ok: true, ...result });
+  return NextResponse.json({ ok: true, sent, failed, familiesSkipped: skipped });
 }

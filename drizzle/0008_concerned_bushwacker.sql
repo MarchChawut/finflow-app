@@ -1,0 +1,1 @@
+ALTER TABLE "families" ADD COLUMN "gemini_api_key_encrypted" text;

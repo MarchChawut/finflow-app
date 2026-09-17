@@ -5,7 +5,8 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { verifySession } from "@/lib/dal";
-import { messagingApiClient, messagingApiBlobClient } from "@/lib/line/client";
+import { getFamilyLineSettings, getFamilySecretsById } from "@/lib/data/families";
+import { getLineClientsForFamily } from "@/lib/line/clientForFamily";
 import { verifyLineIdToken } from "@/lib/line/verifyIdToken";
 import {
   generateRichMenuPng,
@@ -22,9 +23,14 @@ const PG_UNIQUE_VIOLATION = "23505";
 export async function bindLineAccount(idToken: string): Promise<LineActionState> {
   const user = await verifySession();
 
+  const { liffId } = await getFamilyLineSettings();
+  if (!liffId) {
+    return { error: "ยังไม่ได้ตั้งค่า LIFF ID สำหรับครอบครัวนี้ — ให้แอดมินตั้งค่าที่หน้าตั้งค่าก่อน" };
+  }
+
   let lineUserId: string;
   try {
-    ({ sub: lineUserId } = await verifyLineIdToken(idToken));
+    ({ sub: lineUserId } = await verifyLineIdToken(idToken, liffId));
   } catch {
     return { error: "ยืนยันตัวตนไลน์ไม่สำเร็จ กรุณาลองใหม่" };
   }
@@ -52,9 +58,24 @@ export async function unbindLineAccount(): Promise<LineActionState> {
 }
 
 export async function setupRichMenu(): Promise<LineActionState> {
-  await verifySession();
+  const user = await verifySession();
+  // Admin-gated: this now acts on the family's own LINE OA credentials (an
+  // admin-managed secret), same reasoning as who may view/edit them in
+  // Settings — not the "family data is intentionally unscoped" precedent
+  // other actions in this app follow.
+  if (user.role !== "ADMIN") {
+    return { error: "เฉพาะแอดมินเท่านั้นที่ตั้งค่า Rich Menu ได้" };
+  }
 
-  const quickRecordLiffId = process.env.NEXT_PUBLIC_LIFF_ID_QUICK_RECORD;
+  const family = await getFamilySecretsById(user.familyId);
+  const lineClients = family ? getLineClientsForFamily(family) : null;
+  if (!lineClients) {
+    return {
+      error: "ยังไม่ได้ตั้งค่า LINE OA สำหรับครอบครัวนี้ — กรอกข้อมูลที่การ์ด LINE Official Account ด้านบนก่อน",
+    };
+  }
+
+  const quickRecordLiffId = family?.liffIdQuickRecord ?? undefined;
   const authUrl = process.env.AUTH_URL;
   if (!authUrl) {
     return { error: "ยังไม่ได้ตั้งค่า AUTH_URL ใน .env" };
@@ -72,7 +93,7 @@ export async function setupRichMenu(): Promise<LineActionState> {
   });
 
   try {
-    const { richMenuId } = await messagingApiClient.createRichMenu({
+    const { richMenuId } = await lineClients.client.createRichMenu({
       size: RICH_MENU_SIZE,
       selected: true,
       name: "FinFlow main menu",
@@ -84,7 +105,7 @@ export async function setupRichMenu(): Promise<LineActionState> {
           // generic message if that LIFF app hasn't been set up yet (needs a
           // 2nd LIFF app registered in the LINE Developers Console — see
           // .env.example) — a broken liff.line.me URL is worse than a text
-          // prompt (handled by app/api/line/webhook/route.ts).
+          // prompt (handled by app/api/line/webhook/[webhookSlug]/route.ts).
           action: quickRecordLiffId
             ? { type: "uri", uri: `https://liff.line.me/${quickRecordLiffId}` }
             : { type: "message", text: "บันทึกจดเงิน" },
@@ -113,16 +134,16 @@ export async function setupRichMenu(): Promise<LineActionState> {
     });
 
     const png = await generateRichMenuPng();
-    await messagingApiBlobClient.setRichMenuImage(
+    await lineClients.blobClient.setRichMenuImage(
       richMenuId,
       new Blob([new Uint8Array(png)], { type: "image/png" }),
     );
-    await messagingApiClient.setDefaultRichMenu(richMenuId);
+    await lineClients.client.setDefaultRichMenu(richMenuId);
   } catch (err) {
     console.error("[setupRichMenu] failed:", err);
     return {
       error:
-        "ตั้งค่า Rich Menu ไม่สำเร็จ — ตรวจสอบว่า LINE_CHANNEL_ACCESS_TOKEN ใน .env เป็นค่าจริงแล้วหรือยัง",
+        "ตั้งค่า Rich Menu ไม่สำเร็จ — ตรวจสอบว่ากรอก Channel Access Token ของครอบครัวนี้ถูกต้องแล้วหรือยัง",
     };
   }
 

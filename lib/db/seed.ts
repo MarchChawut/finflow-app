@@ -14,7 +14,7 @@ import "dotenv/config";
 import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "./schema";
-import { categories, transactions, savingsGoals } from "./schema";
+import { categories, transactions, savingsGoals, families } from "./schema";
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const db = drizzle(pool, { schema });
@@ -26,13 +26,21 @@ async function main() {
     process.exit(0);
   }
 
+  // Multi-tenant: seed data needs a family to belong to. Reuse one if it
+  // already exists (e.g. the bootstrap family from the migration) rather
+  // than creating a stray extra one.
+  const [existingFamily] = await db.select().from(families).limit(1);
+  const familyId =
+    existingFamily?.id ??
+    (await db.insert(families).values({ name: "FinFlow" }).returning({ id: families.id }))[0].id;
+
   const [salary, food, transport, shopping] = await db
     .insert(categories)
     .values([
-      { name: "เงินเดือน & โบนัส", type: "INCOME", color: "#34D399", icon: "fa-money-bill-wave" },
-      { name: "อาหาร & เครื่องดื่ม", type: "EXPENSE", color: "#A78BFA", icon: "fa-utensils" },
-      { name: "เดินทาง & น้ำมัน", type: "EXPENSE", color: "#7DD3FC", icon: "fa-car" },
-      { name: "ช้อปปิ้ง & ความบันเทิง", type: "EXPENSE", color: "#F9A8D4", icon: "fa-bag-shopping" },
+      { name: "เงินเดือน & โบนัส", type: "INCOME", color: "#34D399", icon: "fa-money-bill-wave", familyId },
+      { name: "อาหาร & เครื่องดื่ม", type: "EXPENSE", color: "#A78BFA", icon: "fa-utensils", familyId },
+      { name: "เดินทาง & น้ำมัน", type: "EXPENSE", color: "#7DD3FC", icon: "fa-car", familyId },
+      { name: "ช้อปปิ้ง & ความบันเทิง", type: "EXPENSE", color: "#F9A8D4", icon: "fa-bag-shopping", familyId },
     ])
     .returning();
 
@@ -47,6 +55,7 @@ async function main() {
       channel: "LINE_CHAT",
       categoryId: salary.id,
       occurredAt: daysAgo(5),
+      familyId,
     },
     {
       title: "สแกนสลิป ค่ามื้อเย็นสเต๊ก",
@@ -55,6 +64,7 @@ async function main() {
       channel: "LINE_CHAT",
       categoryId: food.id,
       occurredAt: daysAgo(4),
+      familyId,
     },
     {
       title: "เติมน้ำมัน ปตท.",
@@ -63,6 +73,7 @@ async function main() {
       channel: "LIFF_FORM",
       categoryId: transport.id,
       occurredAt: daysAgo(3),
+      familyId,
     },
     {
       title: "ซื้อของเข้าบ้าน Uniqlo",
@@ -71,6 +82,7 @@ async function main() {
       channel: "LINE_CHAT",
       categoryId: shopping.id,
       occurredAt: daysAgo(2),
+      familyId,
     },
     {
       title: "รับเงินโอนค่าสอนพิเศษ",
@@ -79,13 +91,14 @@ async function main() {
       channel: "LINE_CHAT",
       categoryId: salary.id,
       occurredAt: daysAgo(1),
+      familyId,
     },
   ]);
 
   await db.insert(savingsGoals).values([
-    { title: "ออมเงินเที่ยวญี่ปุ่น 🇯🇵", targetAmount: "50000.00", currentAmount: "35000.00", color: "purple" },
-    { title: "กองทุนสำรองฉุกเฉิน 🛡️", targetAmount: "100000.00", currentAmount: "75000.00", color: "emerald" },
-    { title: "ซื้อ iPad Pro ใหม่ 📱", targetAmount: "38000.00", currentAmount: "18000.00", color: "pink" },
+    { title: "ออมเงินเที่ยวญี่ปุ่น 🇯🇵", targetAmount: "50000.00", currentAmount: "35000.00", color: "purple", familyId },
+    { title: "กองทุนสำรองฉุกเฉิน 🛡️", targetAmount: "100000.00", currentAmount: "75000.00", color: "emerald", familyId },
+    { title: "ซื้อ iPad Pro ใหม่ 📱", targetAmount: "38000.00", currentAmount: "18000.00", color: "pink", familyId },
   ]);
 
   console.log("Seeded 4 categories, 5 transactions, 3 savings goals.");

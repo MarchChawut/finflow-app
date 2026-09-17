@@ -9,6 +9,7 @@ import {
   doublePrecision,
   integer,
   primaryKey,
+  unique,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import type { AdapterAccountType } from "next-auth/adapters";
@@ -23,6 +24,33 @@ export const channelEnum = pgEnum("channel", [
   "LIFF_FORM",
   "SLIP_OCR",
 ]);
+
+// --- Families (multi-tenant boundary — one family = one household, its own
+// LINE OA once Phase 2 lands, its own data) ---------------------------------
+
+export const families = pgTable("families", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name"),
+  // Public path segment for this family's LINE webhook — deliberately a
+  // separate random value from `id`, not the real PK: a leaked/pasted
+  // webhook URL can be invalidated by regenerating this one column with no
+  // FK cascade, versus rotating `id` which cascades through the whole schema.
+  webhookSlug: uuid("webhook_slug").notNull().unique().defaultRandom(),
+  // LINE OA credentials, per family (Phase 2). Ciphertext (see
+  // lib/crypto/encryption.ts) — null until the family's host fills in the
+  // Settings form. LIFF ids stay plaintext: they were already shipped
+  // client-side via NEXT_PUBLIC_ env vars before this migration, so they're
+  // not secret the way the token/secret are.
+  lineChannelAccessTokenEncrypted: text("line_channel_access_token_encrypted"),
+  lineChannelSecretEncrypted: text("line_channel_secret_encrypted"),
+  liffId: text("liff_id"),
+  liffIdQuickRecord: text("liff_id_quick_record"),
+  // Phase 5 — Gemini AI coach, per family, same encrypt-at-rest reasoning as
+  // the LINE credentials above. Null until the family's host fills in the
+  // Settings form; no shared/global fallback key.
+  geminiApiKeyEncrypted: text("gemini_api_key_encrypted"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 // --- Users ---------------------------------------------------------------
 // Shape verified against the installed `@auth/drizzle-adapter@1.11.3`'s
@@ -43,9 +71,23 @@ export const users = pgTable("users", {
   emailVerified: timestamp("email_verified", { mode: "date" }),
   image: text("image"),
   role: roleEnum("role").notNull().default("MEMBER"),
-  lineUserId: varchar("line_user_id", { length: 64 }).unique(),
+  // Unique per-family, not globally: once each family can register its own
+  // independent LINE OA channel (Phase 2), two families' channels have
+  // separate LINE userId namespaces, so a global unique constraint would
+  // wrongly block a legitimate second bind. See the composite unique index
+  // below. Postgres treats NULLs as distinct, so pre-resolution rows
+  // (familyId/lineUserId both still null) never spuriously collide.
+  lineUserId: varchar("line_user_id", { length: 64 }),
+  // Nullable at the DB level ONLY because the DrizzleAdapter's createUser
+  // insert doesn't know about this column — auth.ts's signIn callback
+  // resolves it (join an invited family, or create a new one as its host)
+  // immediately after the row is created, before sign-in completes. Every
+  // *other* family-scoped table below is NOT NULL: those rows are only ever
+  // created by our own app code, always after a user already has a
+  // resolved familyId.
+  familyId: uuid("family_id").references(() => families.id),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [unique().on(t.familyId, t.lineUserId)]);
 
 // --- Auth.js tables (accounts/sessions/verificationTokens) ---------------
 // JS property names below must match what @auth/drizzle-adapter's
@@ -102,6 +144,9 @@ export const verificationTokens = pgTable(
 
 export const categories = pgTable("categories", {
   id: uuid("id").primaryKey().defaultRandom(),
+  familyId: uuid("family_id")
+    .notNull()
+    .references(() => families.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   icon: text("icon"),
   color: text("color"),
@@ -112,6 +157,9 @@ export const categories = pgTable("categories", {
 
 export const transactions = pgTable("transactions", {
   id: uuid("id").primaryKey().defaultRandom(),
+  familyId: uuid("family_id")
+    .notNull()
+    .references(() => families.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
   amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
   type: transactionTypeEnum("type").notNull(),
@@ -135,6 +183,9 @@ export const transactions = pgTable("transactions", {
 
 export const savingsGoals = pgTable("savings_goals", {
   id: uuid("id").primaryKey().defaultRandom(),
+  familyId: uuid("family_id")
+    .notNull()
+    .references(() => families.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
   targetAmount: numeric("target_amount", { precision: 12, scale: 2 }).notNull(),
   currentAmount: numeric("current_amount", { precision: 12, scale: 2 }).notNull().default("0"),
@@ -148,6 +199,9 @@ export const savingsGoals = pgTable("savings_goals", {
 
 export const recurringBills = pgTable("recurring_bills", {
   id: uuid("id").primaryKey().defaultRandom(),
+  familyId: uuid("family_id")
+    .notNull()
+    .references(() => families.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
   categoryId: uuid("category_id").references(() => categories.id, { onDelete: "set null" }),
@@ -173,18 +227,30 @@ export const userBudgetSettings = pgTable("user_budget_settings", {
 });
 
 // --- App settings (generic key/value; Rich Menu id, feature flags, etc.) ---
+// Composite (familyId, key) primary key — each family has its own value for
+// a given key (e.g. "savings_reminder_enabled" is per-family, not global).
 
-export const appSettings = pgTable("app_settings", {
-  key: text("key").primaryKey(),
-  value: text("value").notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const appSettings = pgTable(
+  "app_settings",
+  {
+    familyId: uuid("family_id")
+      .notNull()
+      .references(() => families.id, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    value: text("value").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.familyId, t.key] })],
+);
 
-// --- Invited emails (DB-backed sign-in allowlist, additive to the
-// ADMIN_ALLOWED_EMAILS env var bootstrap list in auth.ts) --------------------
+// --- Invited emails (DB-backed sign-in allowlist — which family a pending
+// invite joins once that email signs in; see auth.ts's signIn callback) ----
 
 export const invitedEmails = pgTable("invited_emails", {
   email: text("email").primaryKey(),
+  familyId: uuid("family_id")
+    .notNull()
+    .references(() => families.id, { onDelete: "cascade" }),
   invitedById: uuid("invited_by_id").references(() => users.id),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

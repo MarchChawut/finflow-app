@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { transactions } from "@/lib/db/schema";
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { verifySession } from "@/lib/dal";
 import { CHANNEL_LABELS } from "@/lib/format";
 
@@ -15,9 +15,10 @@ function csvEscape(value: string): string {
 export async function GET() {
   // A plain link click (not a fetch call) — verifySession()'s redirect just
   // navigates the browser to /login like any other protected page.
-  await verifySession();
+  const user = await verifySession();
 
   const rows = await db.query.transactions.findMany({
+    where: eq(transactions.familyId, user.familyId),
     with: { category: true },
     orderBy: [desc(transactions.occurredAt)],
   });

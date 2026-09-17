@@ -2,21 +2,23 @@ import "server-only";
 
 // LIFF ID tokens are always issued for the LIFF app's own LINE Login
 // channel, and LIFF IDs are formatted "<channelId>-<randomString>" per
-// LINE's docs — so the expected channel id is derivable straight from
-// NEXT_PUBLIC_LIFF_ID without a separate env var.
-function expectedChannelId(): string {
-  return (process.env.NEXT_PUBLIC_LIFF_ID ?? "").split("-")[0] ?? "";
+// LINE's docs — so the expected channel id is derivable straight from the
+// caller's family's own liffId (lib/db/schema.ts's families.liffId).
+function expectedChannelId(liffId: string): string {
+  return liffId.split("-")[0] ?? "";
 }
 
 // Verifies a LIFF `liff.getIDToken()` value against LINE's own verify
 // endpoint (never trust a client-reported LINE user id directly — see
-// components/LiffBinder.tsx). Passing `client_id` pins the token to this
-// app's own channel: LINE's endpoint only succeeds if the token's real
-// `aud` claim matches what we send, so this doubles as the audience check.
-export async function verifyLineIdToken(idToken: string): Promise<{ sub: string }> {
-  const clientId = expectedChannelId();
+// components/LiffBinder.tsx). Passing `client_id` pins the token to the
+// calling family's own channel: LINE's endpoint only succeeds if the
+// token's real `aud` claim matches what we send, so this doubles as the
+// audience check — callers must pass the caller's OWN family's liffId, not
+// any family's, or this check is meaningless.
+export async function verifyLineIdToken(idToken: string, liffId: string): Promise<{ sub: string }> {
+  const clientId = expectedChannelId(liffId);
   if (!clientId) {
-    throw new Error("NEXT_PUBLIC_LIFF_ID ไม่ได้ตั้งค่าไว้ ตรวจสอบ .env");
+    throw new Error("ยังไม่ได้ตั้งค่า LIFF ID สำหรับครอบครัวนี้");
   }
 
   const res = await fetch("https://api.line.me/oauth2/v2.1/verify", {

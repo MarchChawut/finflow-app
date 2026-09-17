@@ -8,18 +8,17 @@ type Status =
   | { step: "success" }
   | { step: "error"; message: string };
 
-export function LiffBinder() {
+export function LiffBinder({ liffId }: { liffId: string | null }) {
   const [status, setStatus] = useState<Status>({ step: "initializing" });
 
   useEffect(() => {
     let cancelled = false;
 
     async function run() {
-      const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
       if (!liffId) {
         setStatus({
           step: "error",
-          message: "ยังไม่ได้ตั้งค่า NEXT_PUBLIC_LIFF_ID ใน .env (Phase 3 ยังไม่มี LIFF app จริง)",
+          message: "ยังไม่ได้ตั้งค่า LIFF ID สำหรับครอบครัวนี้ — ให้แอดมินตั้งค่าที่หน้าตั้งค่าก่อน",
         });
         return;
       }
@@ -67,7 +66,7 @@ export function LiffBinder() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [liffId]);
 
   if (status.step === "initializing") {
     return <p className="text-xs text-slate-400">กำลังเชื่อมต่อกับ LINE...</p>;

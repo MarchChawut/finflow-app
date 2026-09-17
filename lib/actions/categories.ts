@@ -1,7 +1,7 @@
 "use server";
 
 import * as z from "zod";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { categories } from "@/lib/db/schema";
@@ -23,7 +23,7 @@ export async function createCategory(
   _prevState: CategoryFormState,
   formData: FormData,
 ): Promise<CategoryFormState> {
-  await verifySession();
+  const user = await verifySession();
 
   const validated = CategorySchema.safeParse({
     name: formData.get("name"),
@@ -37,7 +37,7 @@ export async function createCategory(
 
   const { name, type, color } = validated.data;
 
-  await db.insert(categories).values({ name, type, color: color || null });
+  await db.insert(categories).values({ name, type, color: color || null, familyId: user.familyId });
 
   revalidatePath("/settings");
   revalidatePath("/transactions");
@@ -50,7 +50,7 @@ export async function updateCategory(
   _prevState: CategoryFormState,
   formData: FormData,
 ): Promise<CategoryFormState> {
-  await verifySession();
+  const user = await verifySession();
 
   const validated = CategorySchema.safeParse({
     name: formData.get("name"),
@@ -67,7 +67,7 @@ export async function updateCategory(
   await db
     .update(categories)
     .set({ name, type, color: color || null })
-    .where(eq(categories.id, id));
+    .where(and(eq(categories.id, id), eq(categories.familyId, user.familyId)));
 
   revalidatePath("/settings");
   revalidatePath("/transactions");
@@ -76,9 +76,11 @@ export async function updateCategory(
 }
 
 export async function deleteCategory(id: string) {
-  await verifySession();
+  const user = await verifySession();
   // Safe even if in use — transactions.categoryId is ON DELETE SET NULL.
-  await db.delete(categories).where(eq(categories.id, id));
+  await db
+    .delete(categories)
+    .where(and(eq(categories.id, id), eq(categories.familyId, user.familyId)));
   revalidatePath("/settings");
   revalidatePath("/transactions");
   revalidatePath("/");

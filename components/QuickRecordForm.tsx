@@ -7,7 +7,13 @@ type Category = { id: string; name: string; type: "INCOME" | "EXPENSE" };
 
 const initialState: TransactionFormState = undefined;
 
-export function QuickRecordForm({ categories }: { categories: Category[] }) {
+export function QuickRecordForm({
+  categories,
+  liffId,
+}: {
+  categories: Category[];
+  liffId: string | null;
+}) {
   const [type, setType] = useState<"INCOME" | "EXPENSE">("EXPENSE");
   const [state, formAction, pending] = useActionState(createTransaction, initialState);
   const filteredCategories = categories.filter((c) => c.type === type);
@@ -18,7 +24,6 @@ export function QuickRecordForm({ categories }: { categories: Category[] }) {
   // leave the success message on screen — never block on this.
   useEffect(() => {
     if (!state?.success) return;
-    const liffId = process.env.NEXT_PUBLIC_LIFF_ID_QUICK_RECORD;
     if (!liffId) return;
 
     let cancelled = false;
@@ -36,7 +41,7 @@ export function QuickRecordForm({ categories }: { categories: Category[] }) {
     return () => {
       cancelled = true;
     };
-  }, [state?.success]);
+  }, [state?.success, liffId]);
 
   if (state?.success) {
     return (

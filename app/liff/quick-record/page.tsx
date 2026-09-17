@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getSession } from "@/lib/session";
 import { getCategories } from "@/lib/data/transactions";
+import { getFamilyLineSettings } from "@/lib/data/families";
 import { QuickRecordForm } from "@/components/QuickRecordForm";
 
 // Same reasoning as app/liff/page.tsx: excluded from proxy.ts's matcher
@@ -27,14 +28,17 @@ export default async function QuickRecordPage() {
     );
   }
 
-  const categories = await getCategories();
+  const [categories, { liffIdQuickRecord }] = await Promise.all([
+    getCategories(),
+    getFamilyLineSettings(),
+  ]);
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center px-4 py-8">
       <div className="w-full max-w-sm bg-white rounded-3xl shadow-soft-lg border border-slate-100 p-6">
         <h1 className="text-lg font-bold text-slate-800 mb-1 text-center">บันทึกจดเงิน</h1>
         <p className="text-xs text-slate-400 mb-6 text-center">จดรายรับ-รายจ่ายแบบด่วน</p>
-        <QuickRecordForm categories={categories} />
+        <QuickRecordForm categories={categories} liffId={liffIdQuickRecord} />
       </div>
     </div>
   );

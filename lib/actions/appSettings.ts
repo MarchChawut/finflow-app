@@ -7,12 +7,12 @@ import { verifySession } from "@/lib/dal";
 import { sendSavingsReminder } from "@/lib/line/reminder";
 import type { BudgetRatioPart } from "@/lib/data/budgetSettings";
 
-async function upsertSetting(key: string, value: string) {
+export async function upsertSetting(familyId: string, key: string, value: string) {
   await db
     .insert(appSettings)
-    .values({ key, value })
+    .values({ familyId, key, value })
     .onConflictDoUpdate({
-      target: appSettings.key,
+      target: [appSettings.familyId, appSettings.key],
       set: { value, updatedAt: new Date() },
     });
 }
@@ -22,24 +22,24 @@ async function upsertSetting(key: string, value: string) {
 // already constrained to YYYY-MM-DD, but guard against a bad/empty value
 // (e.g. the field cleared mid-edit) rather than writing an invalid date.
 export async function setUsagePeriodExpiresAt(dateString: string) {
-  await verifySession();
+  const user = await verifySession();
 
   const parsed = new Date(dateString);
   if (Number.isNaN(parsed.getTime())) return;
 
-  await upsertSetting("usage_period_expires_at", parsed.toISOString());
+  await upsertSetting(user.familyId, "usage_period_expires_at", parsed.toISOString());
   revalidatePath("/settings");
 }
 
 export async function setSavingsReminderEnabled(enabled: boolean) {
-  await verifySession();
-  await upsertSetting("savings_reminder_enabled", enabled ? "true" : "false");
+  const user = await verifySession();
+  await upsertSetting(user.familyId, "savings_reminder_enabled", enabled ? "true" : "false");
   revalidatePath("/settings");
 }
 
 export async function sendSavingsReminderNow(): Promise<{ sent: number; failed: number }> {
-  await verifySession();
-  return sendSavingsReminder();
+  const user = await verifySession();
+  return sendSavingsReminder(user.familyId);
 }
 
 // Not admin-gated: same "family data is intentionally unscoped" precedent as
@@ -51,7 +51,7 @@ export async function setFamilyBudgetSettings({
   income: string;
   parts: BudgetRatioPart[];
 }) {
-  await verifySession();
-  await upsertSetting("family_budget_settings", JSON.stringify({ income, parts }));
+  const user = await verifySession();
+  await upsertSetting(user.familyId, "family_budget_settings", JSON.stringify({ income, parts }));
   revalidatePath("/tools");
 }

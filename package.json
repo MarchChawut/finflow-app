@@ -11,12 +11,14 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "db:seed": "tsx lib/db/seed.ts"
+    "db:seed": "tsx lib/db/seed.ts",
+    "db:migrate-line-credentials": "tsx lib/db/migrate-bootstrap-line-credentials.ts"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.3",
     "@fortawesome/fontawesome-free": "^7.3.1",
     "@google-cloud/vision": "^6.1.0",
+    "@google/genai": "^2.23.0",
     "@line/bot-sdk": "^11.2.0",
     "@line/liff": "^2.31.0",
     "chart.js": "^4.5.1",

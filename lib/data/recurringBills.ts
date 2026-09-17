@@ -1,13 +1,14 @@
 import "server-only";
 import { cache } from "react";
-import { asc } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { recurringBills } from "@/lib/db/schema";
 import { verifySession } from "@/lib/dal";
 
 export const getRecurringBills = cache(async () => {
-  await verifySession();
+  const user = await verifySession();
   const bills = await db.query.recurringBills.findMany({
+    where: eq(recurringBills.familyId, user.familyId),
     orderBy: [asc(recurringBills.createdAt)],
   });
 

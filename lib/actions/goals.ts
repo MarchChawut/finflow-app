@@ -1,7 +1,7 @@
 "use server";
 
 import * as z from "zod";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { savingsGoals } from "@/lib/db/schema";
@@ -49,6 +49,7 @@ export async function createGoal(
     targetAmount: targetAmount.toFixed(2),
     color: color || null,
     createdById: user.id,
+    familyId: user.familyId,
   });
 
   revalidatePath("/goals");
@@ -60,7 +61,7 @@ export async function updateGoal(
   _prevState: GoalFormState,
   formData: FormData,
 ): Promise<GoalFormState> {
-  await verifySession();
+  const user = await verifySession();
 
   const validated = GoalSchema.safeParse({
     title: formData.get("title"),
@@ -83,27 +84,29 @@ export async function updateGoal(
       color: color || null,
       ...(currentAmount !== undefined ? { currentAmount: currentAmount.toFixed(2) } : {}),
     })
-    .where(eq(savingsGoals.id, id));
+    .where(and(eq(savingsGoals.id, id), eq(savingsGoals.familyId, user.familyId)));
 
   revalidatePath("/goals");
   return { success: true };
 }
 
 export async function deleteGoal(id: string) {
-  await verifySession();
-  await db.delete(savingsGoals).where(eq(savingsGoals.id, id));
+  const user = await verifySession();
+  await db
+    .delete(savingsGoals)
+    .where(and(eq(savingsGoals.id, id), eq(savingsGoals.familyId, user.familyId)));
   revalidatePath("/goals");
 }
 
 export async function contributeToGoal(id: string, formData: FormData) {
-  await verifySession();
+  const user = await verifySession();
   const amount = Number(formData.get("amount"));
   if (!(amount > 0)) return;
 
   await db
     .update(savingsGoals)
     .set({ currentAmount: sql`${savingsGoals.currentAmount} + ${amount.toFixed(2)}` })
-    .where(eq(savingsGoals.id, id));
+    .where(and(eq(savingsGoals.id, id), eq(savingsGoals.familyId, user.familyId)));
 
   revalidatePath("/goals");
 }
