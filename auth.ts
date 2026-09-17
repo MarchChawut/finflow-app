@@ -31,19 +31,19 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   // signIn write path.
   session: { strategy: "jwt" },
   callbacks: {
-    // No DB lookups here. For a brand-new OAuth user, @auth/core's
-    // handleAuthorized() (lib/actions/callback/index.js) invokes this
-    // callback BEFORE calling adapter.createUser — `user.id` at this point
-    // is a transient crypto.randomUUID() that has never been written to the
-    // DB (verified directly against the installed @auth/core@0.41.3
-    // source). Querying `users` by that id here always misses for a
-    // genuinely first-time sign-in, which was incorrectly denying every new
-    // user with "AccessDenied" — only people already in `users` from before
-    // the multi-tenant migration (an existing familyId) ever got through.
-    // Just gate on having an email; family resolution moved to `jwt` below.
-    async signIn({ user }) {
-      return Boolean(user.email);
-    },
+    // No custom signIn gate — nothing here needs to reject a sign-in, and a
+    // custom `signIn` callback that returns/throws falsy is exactly what
+    // produces Auth.js's generic "AccessDenied" (see @auth/core's
+    // handleAuthorized(): `if (!authorized) throw new AccessDenied(...)`).
+    // The previous version of this callback queried `users` by `user.id`
+    // to decide family membership — but for a brand-new OAuth user,
+    // @auth/core calls this BEFORE adapter.createUser runs (verified
+    // directly against the installed @auth/core@0.41.3 source), so
+    // `user.id` was a transient crypto.randomUUID() never written to the
+    // DB, and that query always missed, incorrectly denying every new
+    // user. Family resolution now happens in `jwt` below instead, which
+    // Auth.js calls AFTER the adapter has actually persisted the row.
+    //
     // `user` is only populated on initial sign-in, and by this point Auth.js
     // has already called the adapter's createUser — `user.id` here IS the
     // real persisted row, unlike in `signIn` above. This is the correct,
@@ -60,6 +60,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           where: eq(users.id, user.id),
           columns: { role: true, familyId: true },
         });
+
+        if (!dbUser) {
+          // Should be unreachable (adapter.createUser already ran by this
+          // point) — logged rather than silently leaving familyId unset,
+          // which would otherwise fail closed in `session` below with no
+          // trace of why.
+          console.error(`[auth] jwt: no users row found for id ${user.id} right after sign-in`);
+        }
 
         if (dbUser && !dbUser.familyId && user.email) {
           const email = user.email.toLowerCase();
