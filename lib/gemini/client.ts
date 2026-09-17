@@ -4,10 +4,12 @@ import { decrypt } from "@/lib/crypto/encryption";
 
 // Named export, not a bare string in the action file — Google's flash-tier
 // models get retired/renamed roughly every 6-12 months, so this is the one
-// place to bump later. gemini-2.5-flash: best price/performance for
-// low-latency reasoning tasks, appropriate for a few short paragraphs of
-// advice (no need for the pricier gemini-3.8-flash's extra reasoning depth).
-export const COACH_MODEL = "gemini-2.5-flash";
+// place to bump later. gemini-2.5-flash (the original choice here) started
+// 404ing in production with "no longer available to new users... use
+// models/gemini-3.6-flash" — that's a live error from Google's own API for
+// a real caller, not a guess, so this is bumped directly per that message
+// rather than re-guessing a "best price/performance" pick from docs alone.
+export const COACH_MODEL = "gemini-3.6-flash";
 
 // Mirrors lib/line/clientForFamily.ts's shape/reasoning: built fresh per
 // call (not cached), so a key rotation in Settings takes effect immediately.
