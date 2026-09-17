@@ -72,6 +72,7 @@ export function TransactionsTable({
   }, [items, search, typeFilter]);
 
   function handleDelete(id: string) {
+    if (!confirm("ลบรายการนี้ใช่ไหม?")) return;
     setDeletingId(id);
     startTransition(async () => {
       await deleteTransaction(id);
