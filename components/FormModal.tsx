@@ -82,6 +82,10 @@ export function FormModal({
             <form action={formAction} className="space-y-4 text-sm">
               {children(state)}
 
+              {state?.message && (
+                <p className="text-[11px] text-rose-500">{state.message}</p>
+              )}
+
               <button
                 type="submit"
                 disabled={pending}

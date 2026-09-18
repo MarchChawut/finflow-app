@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { validateSignature, type webhook } from "@line/bot-sdk";
-import { and, eq, gte, lt, sql } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, lt, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { transactions, savingsGoals, users } from "@/lib/db/schema";
+import { transactions, savingsGoals, users, categories } from "@/lib/db/schema";
 import { getFamilyByWebhookSlug } from "@/lib/data/families";
 import { getLineClientsForFamily, type LineClients } from "@/lib/line/clientForFamily";
 import { decrypt } from "@/lib/crypto/encryption";
@@ -88,6 +88,14 @@ async function handleEvent(event: webhook.Event, familyId: string, lineClients: 
     // `event.message` is accessed from inside a callback).
     const messageText = event.message.text;
 
+    // A reply to "เลือกหมวดหมู่ให้ด้วยนะครับ" (quick-reply tap or typed by
+    // hand) — resolved against whichever transaction from this LINE user is
+    // still missing a category, before anything else gets a chance to
+    // misread it as a new transaction.
+    if (await tryHandleCategoryPick(lineClients, familyId, lineUserId, messageText, replyToken)) {
+      return;
+    }
+
     // Rich Menu quick actions (lib/actions/line.ts's setupRichMenu) send
     // these two exact phrases as plain text messages — handle them before
     // the money parser so they don't get misread as "record an expense
@@ -130,13 +138,22 @@ async function handleEvent(event: webhook.Event, familyId: string, lineClients: 
 
     const sign = parsed.type === "INCOME" ? "+" : "-";
     const baseReply = `บันทึกแล้ว ✅\n${parsed.title}\n${sign}${parsed.amount.toLocaleString("th-TH")} บาท`;
+    const categoryQuickReply = await buildCategoryQuickReply(familyId, parsed.type);
 
     if (SAVINGS_TRANSFER_KEYWORDS.some((kw) => messageText.includes(kw))) {
-      await handleSavingsTransfer(lineClients, familyId, replyToken, parsed, messageText, baseReply);
+      await handleSavingsTransfer(
+        lineClients,
+        familyId,
+        replyToken,
+        parsed,
+        messageText,
+        baseReply,
+        categoryQuickReply,
+      );
       return;
     }
 
-    await reply(lineClients, replyToken, baseReply);
+    await reply(lineClients, replyToken, withCategoryPrompt(baseReply, categoryQuickReply), categoryQuickReply);
     return;
   }
 
@@ -164,6 +181,7 @@ async function handleSavingsTransfer(
   parsed: ParsedMoneyMessage,
   originalText: string,
   baseReply: string,
+  categoryQuickReply: QuickReplyItem[],
 ) {
   const goals = await db.query.savingsGoals.findMany({
     where: eq(savingsGoals.familyId, familyId),
@@ -178,7 +196,11 @@ async function handleSavingsTransfer(
     await reply(
       lineClients,
       replyToken,
-      `${baseReply}\n\n🤔 ไม่แน่ใจว่าจะเติมเข้าเป้าหมายไหน ลองพิมพ์ชื่อเป้าหมายให้ชัดเจนกว่านี้ หรือไปเติมเงินที่เว็บ FinFlow แทนนะครับ\nเป้าหมายที่มีตอนนี้:\n${goalList}`,
+      withCategoryPrompt(
+        `${baseReply}\n\n🤔 ไม่แน่ใจว่าจะเติมเข้าเป้าหมายไหน ลองพิมพ์ชื่อเป้าหมายให้ชัดเจนกว่านี้ หรือไปเติมเงินที่เว็บ FinFlow แทนนะครับ\nเป้าหมายที่มีตอนนี้:\n${goalList}`,
+        categoryQuickReply,
+      ),
+      categoryQuickReply,
     );
     return;
   }
@@ -194,11 +216,8 @@ async function handleSavingsTransfer(
   const target = Number(matched.targetAmount);
   const percent = target > 0 ? Math.min(100, Math.round((updatedCurrent / target) * 100)) : 0;
 
-  await reply(
-    lineClients,
-    replyToken,
-    `${baseReply}\n\n💰 เติมเข้าเป้าหมาย "${matched.title}" +${parsed.amount.toLocaleString("th-TH")} บาท\nตอนนี้: ${updatedCurrent.toLocaleString("th-TH")} / ${target.toLocaleString("th-TH")} บาท (${percent}%)`,
-  );
+  const transferReply = `${baseReply}\n\n💰 เติมเข้าเป้าหมาย "${matched.title}" +${parsed.amount.toLocaleString("th-TH")} บาท\nตอนนี้: ${updatedCurrent.toLocaleString("th-TH")} / ${target.toLocaleString("th-TH")} บาท (${percent}%)`;
+  await reply(lineClients, replyToken, withCategoryPrompt(transferReply, categoryQuickReply), categoryQuickReply);
 }
 
 async function handleImageMessage(
@@ -236,14 +255,13 @@ async function handleImageMessage(
 
     const lowConfidence = confidence < OCR_CONFIDENCE_REVIEW_THRESHOLD;
     const sign = parsed.type === "INCOME" ? "+" : "-";
-    await reply(
-      lineClients,
-      replyToken,
+    const slipBaseReply =
       `บันทึกแล้ว ✅ (จากสลิป)\n${parsed.title}\n${sign}${parsed.amount.toLocaleString("th-TH")} บาท` +
-        (lowConfidence
-          ? "\n\n⚠️ อ่านยอดไม่ค่อยชัด ช่วยตรวจสอบและแก้ไขในเว็บ FinFlow อีกทีนะครับ"
-          : ""),
-    );
+      (lowConfidence
+        ? "\n\n⚠️ อ่านยอดไม่ค่อยชัด ช่วยตรวจสอบและแก้ไขในเว็บ FinFlow อีกทีนะครับ"
+        : "");
+    const categoryQuickReply = await buildCategoryQuickReply(familyId, parsed.type);
+    await reply(lineClients, replyToken, withCategoryPrompt(slipBaseReply, categoryQuickReply), categoryQuickReply);
   } catch (err) {
     // Expected until a real GOOGLE_APPLICATION_CREDENTIALS exists — degrade
     // to asking for text input rather than a 500 (LINE still requires 200).
@@ -295,12 +313,34 @@ async function downloadMessageContent(lineClients: LineClients, messageId: strin
   return Buffer.concat(chunks);
 }
 
-async function reply(lineClients: LineClients, replyToken: string | undefined, text: string) {
+type QuickReplyItem = { label: string; text: string };
+
+async function reply(
+  lineClients: LineClients,
+  replyToken: string | undefined,
+  text: string,
+  quickReplyItems?: QuickReplyItem[],
+) {
   if (!replyToken) return;
   try {
     await lineClients.client.replyMessage({
       replyToken,
-      messages: [{ type: "text", text }],
+      messages: [
+        {
+          type: "text",
+          text,
+          ...(quickReplyItems && quickReplyItems.length > 0
+            ? {
+                quickReply: {
+                  items: quickReplyItems.map((item) => ({
+                    type: "action" as const,
+                    action: { type: "message" as const, label: item.label.slice(0, 20), text: item.text },
+                  })),
+                },
+              }
+            : {}),
+        },
+      ],
     });
   } catch (err) {
     // Expected while a family's real access token is still invalid/unset —
@@ -308,5 +348,69 @@ async function reply(lineClients: LineClients, replyToken: string | undefined, t
     // reply turn into a 500 for the whole webhook call.
     console.error("[line webhook] replyMessage failed:", err);
   }
+}
+
+// LINE caps Quick Reply at 13 items — 12 categories + one "skip" option.
+const CATEGORY_QUICK_REPLY_LIMIT = 12;
+const SKIP_CATEGORY_PHRASES = ["ข้าม", "ข้ามไปก่อน"];
+
+async function buildCategoryQuickReply(
+  familyId: string,
+  type: "INCOME" | "EXPENSE",
+): Promise<QuickReplyItem[]> {
+  const familyCategories = await db.query.categories.findMany({
+    where: and(eq(categories.familyId, familyId), eq(categories.type, type)),
+  });
+  if (familyCategories.length === 0) return [];
+
+  return [
+    ...familyCategories.slice(0, CATEGORY_QUICK_REPLY_LIMIT).map((c) => ({ label: c.name, text: c.name })),
+    { label: "ข้ามไปก่อน", text: "ข้าม" },
+  ];
+}
+
+function withCategoryPrompt(baseText: string, quickReplyItems: QuickReplyItem[]): string {
+  return quickReplyItems.length > 0 ? `${baseText}\n\nเลือกหมวดหมู่ให้ด้วยนะครับ 👇` : baseText;
+}
+
+// Resolves a reply to the category-pick prompt against whichever transaction
+// from this LINE user is still missing a category (the most recent one with
+// categoryId IS NULL — no separate "pending" state needed). Returns true when
+// the message was handled here (skip phrase or a matching category name), so
+// the caller can stop before treating it as a new transaction.
+async function tryHandleCategoryPick(
+  lineClients: LineClients,
+  familyId: string,
+  lineUserId: string | undefined,
+  messageText: string,
+  replyToken: string | undefined,
+): Promise<boolean> {
+  if (!lineUserId) return false;
+
+  const pending = await db.query.transactions.findFirst({
+    where: and(
+      eq(transactions.familyId, familyId),
+      eq(transactions.lineUserId, lineUserId),
+      isNull(transactions.categoryId),
+    ),
+    orderBy: [desc(transactions.createdAt)],
+  });
+  if (!pending) return false;
+
+  const trimmed = messageText.trim();
+
+  if (SKIP_CATEGORY_PHRASES.includes(trimmed)) {
+    await reply(lineClients, replyToken, "ข้ามไปก่อนนะครับ ไปเลือกหมวดหมู่ทีหลังได้ที่เว็บ FinFlow");
+    return true;
+  }
+
+  const matched = await db.query.categories.findFirst({
+    where: and(eq(categories.familyId, familyId), eq(categories.type, pending.type), eq(categories.name, trimmed)),
+  });
+  if (!matched) return false;
+
+  await db.update(transactions).set({ categoryId: matched.id }).where(eq(transactions.id, pending.id));
+  await reply(lineClients, replyToken, `จัดเป็นหมวด "${matched.name}" ให้แล้วครับ ✅`);
+  return true;
 }
 

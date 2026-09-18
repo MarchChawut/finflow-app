@@ -14,7 +14,7 @@ const TransactionSchema = z.object({
   type: z.enum(["INCOME", "EXPENSE"]),
   categoryId: z.uuid().optional().or(z.literal("")),
   channel: z.enum(["DASHBOARD", "LINE_CHAT", "LIFF_FORM", "SLIP_OCR"]).default("DASHBOARD"),
-  note: z.string().trim().optional(),
+  note: z.string().trim().nullish(),
 });
 
 export type TransactionFormState = {
@@ -39,7 +39,10 @@ export async function createTransaction(
   });
 
   if (!validated.success) {
-    return { errors: z.flattenError(validated.error).fieldErrors };
+    return {
+      errors: z.flattenError(validated.error).fieldErrors,
+      message: "กรอกข้อมูลไม่ครบหรือไม่ถูกต้อง ลองตรวจสอบอีกครั้ง",
+    };
   }
 
   const { title, amount, type, categoryId, channel, note } = validated.data;
@@ -77,7 +80,10 @@ export async function updateTransaction(
   });
 
   if (!validated.success) {
-    return { errors: z.flattenError(validated.error).fieldErrors };
+    return {
+      errors: z.flattenError(validated.error).fieldErrors,
+      message: "กรอกข้อมูลไม่ครบหรือไม่ถูกต้อง ลองตรวจสอบอีกครั้ง",
+    };
   }
 
   const { title, amount, type, categoryId, note } = validated.data;
