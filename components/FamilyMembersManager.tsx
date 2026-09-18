@@ -22,7 +22,7 @@ function MemberRow({ member, canRemove }: { member: Member; canRemove: boolean }
   }
 
   function handleRemove() {
-    if (!confirm(`ลบ ${member.name ?? member.email} ออกจากครอบครัว?`)) return;
+    if (!confirm(`แน่ใจหรือไม่ว่าต้องการลบ ${member.name ?? member.email} ออกจากครอบครัว?`)) return;
     startTransition(async () => {
       await removeFamilyMember(member.id);
     });
