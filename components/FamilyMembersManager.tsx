@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { updateUserRole } from "@/lib/actions/users";
+import { updateUserRole, removeFamilyMember } from "@/lib/actions/users";
 import { inviteFamilyMember } from "@/lib/actions/invites";
 
 type Member = {
@@ -12,12 +12,19 @@ type Member = {
   lineBound: boolean;
 };
 
-function MemberRow({ member }: { member: Member }) {
+function MemberRow({ member, canRemove }: { member: Member; canRemove: boolean }) {
   const [pending, startTransition] = useTransition();
 
   function handleRoleChange(role: "ADMIN" | "MEMBER") {
     startTransition(async () => {
       await updateUserRole(member.id, role);
+    });
+  }
+
+  function handleRemove() {
+    if (!confirm(`ลบ ${member.name ?? member.email} ออกจากครอบครัว?`)) return;
+    startTransition(async () => {
+      await removeFamilyMember(member.id);
     });
   }
 
@@ -36,15 +43,27 @@ function MemberRow({ member }: { member: Member }) {
           {member.lineBound ? " · ผูกไลน์แล้ว" : " · ยังไม่ผูกไลน์"}
         </p>
       </div>
-      <select
-        value={member.role}
-        disabled={pending}
-        onChange={(e) => handleRoleChange(e.target.value as "ADMIN" | "MEMBER")}
-        className="shrink-0 text-xs bg-white border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-200 text-slate-600 font-medium disabled:opacity-40"
-      >
-        <option value="MEMBER">Member</option>
-        <option value="ADMIN">Admin</option>
-      </select>
+      <div className="shrink-0 flex items-center gap-2">
+        <select
+          value={member.role}
+          disabled={pending}
+          onChange={(e) => handleRoleChange(e.target.value as "ADMIN" | "MEMBER")}
+          className="text-xs bg-white border border-slate-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-200 text-slate-600 font-medium disabled:opacity-40"
+        >
+          <option value="MEMBER">Member</option>
+          <option value="ADMIN">Admin</option>
+        </select>
+        {canRemove && (
+          <button
+            type="button"
+            disabled={pending}
+            onClick={handleRemove}
+            className="text-xs font-medium text-rose-500 hover:bg-rose-50 rounded-xl px-3 py-2 transition-colors disabled:opacity-40"
+          >
+            ลบ
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -114,7 +133,15 @@ function InviteMemberForm() {
   );
 }
 
-export function FamilyMembersManager({ members }: { members: Member[] }) {
+export function FamilyMembersManager({
+  members,
+  currentUserId,
+  currentUserRole,
+}: {
+  members: Member[];
+  currentUserId: string;
+  currentUserRole: "ADMIN" | "MEMBER";
+}) {
   return (
     <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-soft">
       <h3 className="font-bold text-slate-800 text-sm mb-1">สมาชิกครอบครัว</h3>
@@ -123,7 +150,11 @@ export function FamilyMembersManager({ members }: { members: Member[] }) {
       </p>
       <div className="space-y-2">
         {members.map((m) => (
-          <MemberRow key={m.id} member={m} />
+          <MemberRow
+            key={m.id}
+            member={m}
+            canRemove={currentUserRole === "ADMIN" && m.id !== currentUserId}
+          />
         ))}
         {members.length === 0 && (
           <p className="text-xs text-slate-400 py-2">ยังไม่มีสมาชิกเข้าสู่ระบบ</p>

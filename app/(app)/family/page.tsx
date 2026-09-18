@@ -16,7 +16,11 @@ export default async function FamilyPage() {
       />
 
       <div className="max-w-2xl">
-        <FamilyMembersManager members={members} />
+        <FamilyMembersManager
+          members={members}
+          currentUserId={user.id}
+          currentUserRole={user.role}
+        />
       </div>
     </>
   );

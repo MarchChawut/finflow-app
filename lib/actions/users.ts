@@ -25,3 +25,21 @@ export async function updateUserRole(userId: string, role: "ADMIN" | "MEMBER") {
     .where(and(eq(users.id, userId), eq(users.familyId, user.familyId)));
   revalidatePath("/family");
 }
+
+// Admin-gated, same reasoning as updateUserRole. Nulls familyId rather than
+// deleting the users row — transactions/goals/bills reference createdById
+// with no cascade, so a hard delete would hit a Postgres FK-restrict error
+// the moment a removed member has any history. A null familyId is also
+// exactly what auth.ts's jwt callback already treats as "needs a family":
+// the removed member's next sign-in transparently gives them a brand-new
+// family of their own, rather than leaving them in a broken state.
+export async function removeFamilyMember(userId: string) {
+  const user = await verifySession();
+  if (user.role !== "ADMIN") return;
+  if (userId === user.id) return;
+  await db
+    .update(users)
+    .set({ familyId: null })
+    .where(and(eq(users.id, userId), eq(users.familyId, user.familyId)));
+  revalidatePath("/family");
+}
