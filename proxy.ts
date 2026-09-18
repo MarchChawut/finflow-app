@@ -12,7 +12,7 @@ import { auth } from "@/auth";
 const publicRoutes = new Set(["/login"]);
 
 export default auth((req) => {
-  const isLoggedIn = !!req.auth;
+  const isLoggedIn = !!req.auth?.user?.id;
   const { pathname } = req.nextUrl;
 
   if (!isLoggedIn && !publicRoutes.has(pathname)) {
