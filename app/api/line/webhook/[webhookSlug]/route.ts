@@ -227,7 +227,7 @@ async function handleImageMessage(
     await db.insert(transactions).values({
       title: parsed.title,
       amount: parsed.amount.toFixed(2),
-      type: "EXPENSE",
+      type: parsed.type,
       channel: "SLIP_OCR",
       lineUserId,
       ocrConfidence: confidence,
@@ -235,10 +235,11 @@ async function handleImageMessage(
     });
 
     const lowConfidence = confidence < OCR_CONFIDENCE_REVIEW_THRESHOLD;
+    const sign = parsed.type === "INCOME" ? "+" : "-";
     await reply(
       lineClients,
       replyToken,
-      `บันทึกแล้ว ✅ (จากสลิป)\n${parsed.title}\n-${parsed.amount.toLocaleString("th-TH")} บาท` +
+      `บันทึกแล้ว ✅ (จากสลิป)\n${parsed.title}\n${sign}${parsed.amount.toLocaleString("th-TH")} บาท` +
         (lowConfidence
           ? "\n\n⚠️ อ่านยอดไม่ค่อยชัด ช่วยตรวจสอบและแก้ไขในเว็บ FinFlow อีกทีนะครับ"
           : ""),
