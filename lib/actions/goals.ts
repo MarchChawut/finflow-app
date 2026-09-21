@@ -6,11 +6,13 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { savingsGoals } from "@/lib/db/schema";
 import { verifySession } from "@/lib/dal";
+import { visibleTo } from "@/lib/db/visibility";
 
 const GoalSchema = z.object({
   title: z.string().trim().min(1, { error: "กรุณาระบุชื่อเป้าหมาย" }),
   targetAmount: z.coerce.number().positive({ error: "เป้าหมายต้องมากกว่า 0" }),
   color: z.string().trim().optional(),
+  visibility: z.enum(["PERSONAL", "FAMILY"]).default("FAMILY"),
   // Only set from the edit flow (GoalModal.tsx only renders this field when
   // editing) — lets a wrong contribution (by hand or from the LINE savings-
   // transfer feature) be corrected, or a goal reset back to 0 to start over.
@@ -26,6 +28,17 @@ export type GoalFormState = {
   success?: boolean;
 } | undefined;
 
+// Scopes a mutation to a goal this caller may actually touch: same family,
+// and (FAMILY-visibility OR owned by the caller). Shared by every mutation
+// below so the rule can't drift between them.
+function ownedGoal(id: string, familyId: string, userId: string) {
+  return and(
+    eq(savingsGoals.id, id),
+    eq(savingsGoals.familyId, familyId),
+    visibleTo(savingsGoals.visibility, savingsGoals.createdById, userId),
+  );
+}
+
 export async function createGoal(
   _prevState: GoalFormState,
   formData: FormData,
@@ -36,13 +49,14 @@ export async function createGoal(
     title: formData.get("title"),
     targetAmount: formData.get("targetAmount"),
     color: formData.get("color"),
+    visibility: formData.get("visibility") || undefined,
   });
 
   if (!validated.success) {
     return { errors: z.flattenError(validated.error).fieldErrors };
   }
 
-  const { title, targetAmount, color } = validated.data;
+  const { title, targetAmount, color, visibility } = validated.data;
 
   await db.insert(savingsGoals).values({
     title,
@@ -50,6 +64,7 @@ export async function createGoal(
     color: color || null,
     createdById: user.id,
     familyId: user.familyId,
+    visibility,
   });
 
   revalidatePath("/goals");
@@ -67,6 +82,7 @@ export async function updateGoal(
     title: formData.get("title"),
     targetAmount: formData.get("targetAmount"),
     color: formData.get("color"),
+    visibility: formData.get("visibility") || undefined,
     currentAmount: formData.get("currentAmount") || undefined,
   });
 
@@ -74,7 +90,7 @@ export async function updateGoal(
     return { errors: z.flattenError(validated.error).fieldErrors };
   }
 
-  const { title, targetAmount, color, currentAmount } = validated.data;
+  const { title, targetAmount, color, visibility, currentAmount } = validated.data;
 
   await db
     .update(savingsGoals)
@@ -82,9 +98,10 @@ export async function updateGoal(
       title,
       targetAmount: targetAmount.toFixed(2),
       color: color || null,
+      visibility,
       ...(currentAmount !== undefined ? { currentAmount: currentAmount.toFixed(2) } : {}),
     })
-    .where(and(eq(savingsGoals.id, id), eq(savingsGoals.familyId, user.familyId)));
+    .where(ownedGoal(id, user.familyId, user.id));
 
   revalidatePath("/goals");
   return { success: true };
@@ -92,9 +109,7 @@ export async function updateGoal(
 
 export async function deleteGoal(id: string) {
   const user = await verifySession();
-  await db
-    .delete(savingsGoals)
-    .where(and(eq(savingsGoals.id, id), eq(savingsGoals.familyId, user.familyId)));
+  await db.delete(savingsGoals).where(ownedGoal(id, user.familyId, user.id));
   revalidatePath("/goals");
 }
 
@@ -106,7 +121,7 @@ export async function contributeToGoal(id: string, formData: FormData) {
   await db
     .update(savingsGoals)
     .set({ currentAmount: sql`${savingsGoals.currentAmount} + ${amount.toFixed(2)}` })
-    .where(and(eq(savingsGoals.id, id), eq(savingsGoals.familyId, user.familyId)));
+    .where(ownedGoal(id, user.familyId, user.id));
 
   revalidatePath("/goals");
 }

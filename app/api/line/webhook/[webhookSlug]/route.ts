@@ -11,6 +11,7 @@ import { parseSlipText } from "@/lib/line/parseSlip";
 import { googleVisionOcr } from "@/lib/ocr";
 import { findMatchingGoal } from "@/lib/line/matchGoal";
 import { buildGoalsSummaryText } from "@/lib/line/summaries";
+import { visibleTo } from "@/lib/db/visibility";
 
 // A message like "ย้ายเงินคงเหลือไปไว้ในเงินออมเพื่อไปใช้เป็นประกันรถ 250 บาท" still
 // records as a normal expense (the money really did leave free balance) but
@@ -75,9 +76,11 @@ async function handleEvent(event: webhook.Event, familyId: string, lineClients: 
 
   // The webhook slug already identified the family — but the sender still
   // needs to have bound their FinFlow login to this specific family's LINE
-  // account before any write can be attributed to them.
-  const bound = await isLineUserBoundToFamily(lineUserId, familyId);
-  if (!bound) {
+  // account before any write can be attributed to them. The resolved
+  // FinFlow user id is also what makes goal-matching and createdById below
+  // respect PERSONAL-visibility rows instead of leaking them family-wide.
+  const boundUser = await resolveLineUser(lineUserId, familyId);
+  if (!boundUser) {
     await reply(lineClients, replyToken, "ยังไม่ได้ผูกบัญชี LINE กับ FinFlow ครับ กรุณาเข้าเว็บ FinFlow แล้วผูกบัญชีก่อนใช้งานนะครับ");
     return;
   }
@@ -101,7 +104,7 @@ async function handleEvent(event: webhook.Event, familyId: string, lineClients: 
     // the money parser so they don't get misread as "record an expense
     // called 'สรุปยอดวันนี้'".
     if (messageText === "สรุปยอดวันนี้") {
-      await reply(lineClients, replyToken, await buildTodaySummaryText(familyId));
+      await reply(lineClients, replyToken, await buildTodaySummaryText(familyId, boundUser.id));
       return;
     }
     if (messageText === "เป้าหมายออมเงิน") {
@@ -127,6 +130,8 @@ async function handleEvent(event: webhook.Event, familyId: string, lineClients: 
       return;
     }
 
+    const solo = await isSoloFamily(familyId);
+
     await db.insert(transactions).values({
       title: parsed.title,
       amount: parsed.amount.toFixed(2),
@@ -134,57 +139,82 @@ async function handleEvent(event: webhook.Event, familyId: string, lineClients: 
       channel: "LINE_CHAT",
       lineUserId,
       familyId,
+      createdById: boundUser.id,
+      visibility: solo ? "PERSONAL" : "FAMILY",
     });
 
     const sign = parsed.type === "INCOME" ? "+" : "-";
     const baseReply = `บันทึกแล้ว ✅\n${parsed.title}\n${sign}${parsed.amount.toLocaleString("th-TH")} บาท`;
-    const categoryQuickReply = await buildCategoryQuickReply(familyId, parsed.type);
+    const categoryQuickReply = await buildCategoryQuickReply(familyId, parsed.type, !solo);
 
     if (SAVINGS_TRANSFER_KEYWORDS.some((kw) => messageText.includes(kw))) {
       await handleSavingsTransfer(
         lineClients,
         familyId,
+        boundUser.id,
         replyToken,
         parsed,
         messageText,
         baseReply,
         categoryQuickReply,
+        !solo,
       );
       return;
     }
 
-    await reply(lineClients, replyToken, withCategoryPrompt(baseReply, categoryQuickReply), categoryQuickReply);
+    await reply(lineClients, replyToken, withCategoryPrompt(baseReply, categoryQuickReply, !solo), categoryQuickReply);
     return;
   }
 
   if (event.message.type === "image") {
-    await handleImageMessage(lineClients, familyId, event.message.id, replyToken, lineUserId);
+    await handleImageMessage(lineClients, familyId, boundUser.id, event.message.id, replyToken, lineUserId);
   }
 }
 
-async function isLineUserBoundToFamily(
+async function resolveLineUser(
   lineUserId: string | undefined,
   familyId: string,
-): Promise<boolean> {
-  if (!lineUserId) return false;
+): Promise<{ id: string } | null> {
+  if (!lineUserId) return null;
   const matched = await db.query.users.findFirst({
     where: and(eq(users.lineUserId, lineUserId), eq(users.familyId, familyId)),
     columns: { id: true },
   });
-  return Boolean(matched);
+  return matched ?? null;
+}
+
+// A solo family (just its host, nobody invited yet) has no one else who
+// could ever see the difference between FAMILY and PERSONAL — so there's
+// nothing useful to ask, and every LINE-recorded transaction is PERSONAL by
+// construction.
+async function isSoloFamily(familyId: string): Promise<boolean> {
+  const members = await db.query.users.findMany({
+    where: eq(users.familyId, familyId),
+    columns: { id: true },
+    limit: 2,
+  });
+  return members.length <= 1;
 }
 
 async function handleSavingsTransfer(
   lineClients: LineClients,
   familyId: string,
+  userId: string,
   replyToken: string | undefined,
   parsed: ParsedMoneyMessage,
   originalText: string,
   baseReply: string,
   categoryQuickReply: QuickReplyItem[],
+  includeVisibility: boolean,
 ) {
+  // Only FAMILY-visibility goals, plus this sender's own PERSONAL ones — a
+  // family member must never discover or top up someone else's personal
+  // wallet just by typing a matching title in chat.
   const goals = await db.query.savingsGoals.findMany({
-    where: eq(savingsGoals.familyId, familyId),
+    where: and(
+      eq(savingsGoals.familyId, familyId),
+      visibleTo(savingsGoals.visibility, savingsGoals.createdById, userId),
+    ),
   });
   const matched = findMatchingGoal(goals, originalText);
 
@@ -199,6 +229,7 @@ async function handleSavingsTransfer(
       withCategoryPrompt(
         `${baseReply}\n\n🤔 ไม่แน่ใจว่าจะเติมเข้าเป้าหมายไหน ลองพิมพ์ชื่อเป้าหมายให้ชัดเจนกว่านี้ หรือไปเติมเงินที่เว็บ FinFlow แทนนะครับ\nเป้าหมายที่มีตอนนี้:\n${goalList}`,
         categoryQuickReply,
+        includeVisibility,
       ),
       categoryQuickReply,
     );
@@ -217,12 +248,18 @@ async function handleSavingsTransfer(
   const percent = target > 0 ? Math.min(100, Math.round((updatedCurrent / target) * 100)) : 0;
 
   const transferReply = `${baseReply}\n\n💰 เติมเข้าเป้าหมาย "${matched.title}" +${parsed.amount.toLocaleString("th-TH")} บาท\nตอนนี้: ${updatedCurrent.toLocaleString("th-TH")} / ${target.toLocaleString("th-TH")} บาท (${percent}%)`;
-  await reply(lineClients, replyToken, withCategoryPrompt(transferReply, categoryQuickReply), categoryQuickReply);
+  await reply(
+    lineClients,
+    replyToken,
+    withCategoryPrompt(transferReply, categoryQuickReply, includeVisibility),
+    categoryQuickReply,
+  );
 }
 
 async function handleImageMessage(
   lineClients: LineClients,
   familyId: string,
+  userId: string,
   messageId: string,
   replyToken: string | undefined,
   lineUserId: string | undefined,
@@ -241,6 +278,8 @@ async function handleImageMessage(
       return;
     }
 
+    const solo = await isSoloFamily(familyId);
+
     // Deliberately not persisting the slip image itself (no object storage
     // configured yet) — see the Phase 4 plan's "slip image storage" note.
     await db.insert(transactions).values({
@@ -251,6 +290,8 @@ async function handleImageMessage(
       lineUserId,
       ocrConfidence: confidence,
       familyId,
+      createdById: userId,
+      visibility: solo ? "PERSONAL" : "FAMILY",
     });
 
     const lowConfidence = confidence < OCR_CONFIDENCE_REVIEW_THRESHOLD;
@@ -260,8 +301,13 @@ async function handleImageMessage(
       (lowConfidence
         ? "\n\n⚠️ อ่านยอดไม่ค่อยชัด ช่วยตรวจสอบและแก้ไขในเว็บ FinFlow อีกทีนะครับ"
         : "");
-    const categoryQuickReply = await buildCategoryQuickReply(familyId, parsed.type);
-    await reply(lineClients, replyToken, withCategoryPrompt(slipBaseReply, categoryQuickReply), categoryQuickReply);
+    const categoryQuickReply = await buildCategoryQuickReply(familyId, parsed.type, !solo);
+    await reply(
+      lineClients,
+      replyToken,
+      withCategoryPrompt(slipBaseReply, categoryQuickReply, !solo),
+      categoryQuickReply,
+    );
   } catch (err) {
     // Expected until a real GOOGLE_APPLICATION_CREDENTIALS exists — degrade
     // to asking for text input rather than a 500 (LINE still requires 200).
@@ -274,11 +320,14 @@ async function handleImageMessage(
   }
 }
 
-async function buildTodaySummaryText(familyId: string): Promise<string> {
+async function buildTodaySummaryText(familyId: string, userId: string): Promise<string> {
   const now = new Date();
   const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
 
+  // Reply goes only to whoever asked, so (unlike buildGoalsSummaryText's
+  // broadcast) it's safe to fold in the asker's own PERSONAL transactions —
+  // just never another member's.
   const [totals] = await db
     .select({
       income: sql<string>`coalesce(sum(case when ${transactions.type} = 'INCOME' then ${transactions.amount} else 0 end), 0)`,
@@ -288,6 +337,7 @@ async function buildTodaySummaryText(familyId: string): Promise<string> {
     .where(
       and(
         eq(transactions.familyId, familyId),
+        visibleTo(transactions.visibility, transactions.createdById, userId),
         gte(transactions.occurredAt, start),
         lt(transactions.occurredAt, end),
       ),
@@ -350,34 +400,51 @@ async function reply(
   }
 }
 
-// LINE caps Quick Reply at 13 items — 12 categories + one "skip" option.
+// LINE caps Quick Reply at 13 items — 12 categories + one "skip" option, or
+// 10 categories + 2 visibility options + one "skip" option when the
+// ครอบครัว/ส่วนตัว question is also being asked in the same message.
 const CATEGORY_QUICK_REPLY_LIMIT = 12;
+const CATEGORY_QUICK_REPLY_LIMIT_WITH_VISIBILITY = 10;
 const SKIP_CATEGORY_PHRASES = ["ข้าม", "ข้ามไปก่อน"];
+const VISIBILITY_QUICK_REPLY_ITEMS: QuickReplyItem[] = [
+  { label: "ครอบครัว", text: "ครอบครัว" },
+  { label: "ส่วนตัว", text: "ส่วนตัว" },
+];
 
 async function buildCategoryQuickReply(
   familyId: string,
   type: "INCOME" | "EXPENSE",
+  includeVisibility: boolean,
 ): Promise<QuickReplyItem[]> {
   const familyCategories = await db.query.categories.findMany({
     where: and(eq(categories.familyId, familyId), eq(categories.type, type)),
   });
-  if (familyCategories.length === 0) return [];
+  // With nothing to ask about categories, only still worth a reply if the
+  // ครอบครัว/ส่วนตัว question stands on its own.
+  if (familyCategories.length === 0 && !includeVisibility) return [];
 
+  const categoryLimit = includeVisibility ? CATEGORY_QUICK_REPLY_LIMIT_WITH_VISIBILITY : CATEGORY_QUICK_REPLY_LIMIT;
   return [
-    ...familyCategories.slice(0, CATEGORY_QUICK_REPLY_LIMIT).map((c) => ({ label: c.name, text: c.name })),
+    ...familyCategories.slice(0, categoryLimit).map((c) => ({ label: c.name, text: c.name })),
+    ...(includeVisibility ? VISIBILITY_QUICK_REPLY_ITEMS : []),
     { label: "ข้ามไปก่อน", text: "ข้าม" },
   ];
 }
 
-function withCategoryPrompt(baseText: string, quickReplyItems: QuickReplyItem[]): string {
-  return quickReplyItems.length > 0 ? `${baseText}\n\nเลือกหมวดหมู่ให้ด้วยนะครับ 👇` : baseText;
+function withCategoryPrompt(baseText: string, quickReplyItems: QuickReplyItem[], includeVisibility: boolean): string {
+  if (quickReplyItems.length === 0) return baseText;
+  return includeVisibility
+    ? `${baseText}\n\nเลือกหมวดหมู่ และระบุว่าเป็นรายการของครอบครัวหรือส่วนตัว ให้ด้วยนะครับ 👇`
+    : `${baseText}\n\nเลือกหมวดหมู่ให้ด้วยนะครับ 👇`;
 }
 
-// Resolves a reply to the category-pick prompt against whichever transaction
-// from this LINE user is still missing a category (the most recent one with
-// categoryId IS NULL — no separate "pending" state needed). Returns true when
-// the message was handled here (skip phrase or a matching category name), so
-// the caller can stop before treating it as a new transaction.
+// Resolves a reply to the category (and, when asked, ครอบครัว/ส่วนตัว)
+// prompt against whichever transaction from this LINE user is still missing
+// a category (the most recent one with categoryId IS NULL — no separate
+// "pending" state needed; a ครอบครัว/ส่วนตัว reply doesn't touch categoryId,
+// so the same row stays "pending" for a category answer afterward). Returns
+// true when the message was handled here, so the caller can stop before
+// treating it as a new transaction.
 async function tryHandleCategoryPick(
   lineClients: LineClients,
   familyId: string,
@@ -398,6 +465,19 @@ async function tryHandleCategoryPick(
   if (!pending) return false;
 
   const trimmed = messageText.trim();
+
+  if (trimmed === "ครอบครัว" || trimmed === "ส่วนตัว") {
+    const visibility = trimmed === "ครอบครัว" ? "FAMILY" : "PERSONAL";
+    await db.update(transactions).set({ visibility }).where(eq(transactions.id, pending.id));
+    const categoryQuickReply = await buildCategoryQuickReply(familyId, pending.type, false);
+    await reply(
+      lineClients,
+      replyToken,
+      withCategoryPrompt(`ตั้งเป็นรายการของ${trimmed}ให้แล้วครับ ✅`, categoryQuickReply, false),
+      categoryQuickReply,
+    );
+    return true;
+  }
 
   if (SKIP_CATEGORY_PHRASES.includes(trimmed)) {
     await reply(lineClients, replyToken, "ข้ามไปก่อนนะครับ ไปเลือกหมวดหมู่ทีหลังได้ที่เว็บ FinFlow");

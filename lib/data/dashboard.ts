@@ -4,6 +4,7 @@ import { and, desc, eq, gte, lt, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { categories, savingsGoals, transactions } from "@/lib/db/schema";
 import { verifySession } from "@/lib/dal";
+import { visibleTo } from "@/lib/db/visibility";
 
 function monthRange(date = new Date()) {
   const start = new Date(date.getFullYear(), date.getMonth(), 1);
@@ -14,7 +15,17 @@ function monthRange(date = new Date()) {
 export const getDashboardSummary = cache(async () => {
   const user = await verifySession();
   const { start, end } = monthRange();
-  const familyId = eq(transactions.familyId, user.familyId);
+  // Every aggregate below must only ever count what this specific user may
+  // see (FAMILY rows ∪ their own PERSONAL rows) — never another member's
+  // personal wallets/transactions, even folded into a sum.
+  const txVisible = and(
+    eq(transactions.familyId, user.familyId),
+    visibleTo(transactions.visibility, transactions.createdById, user.id),
+  );
+  const goalsVisible = and(
+    eq(savingsGoals.familyId, user.familyId),
+    visibleTo(savingsGoals.visibility, savingsGoals.createdById, user.id),
+  );
 
   const [[totals], [monthTotals], [savings], categoryBreakdown, recentTransactions] =
     await Promise.all([
@@ -24,7 +35,7 @@ export const getDashboardSummary = cache(async () => {
           totalExpense: sql<string>`coalesce(sum(case when ${transactions.type} = 'EXPENSE' then ${transactions.amount} else 0 end), 0)`,
         })
         .from(transactions)
-        .where(familyId),
+        .where(txVisible),
 
       db
         .select({
@@ -32,14 +43,14 @@ export const getDashboardSummary = cache(async () => {
           monthExpense: sql<string>`coalesce(sum(case when ${transactions.type} = 'EXPENSE' then ${transactions.amount} else 0 end), 0)`,
         })
         .from(transactions)
-        .where(and(familyId, gte(transactions.occurredAt, start), lt(transactions.occurredAt, end))),
+        .where(and(txVisible, gte(transactions.occurredAt, start), lt(transactions.occurredAt, end))),
 
       db
         .select({
           totalSavings: sql<string>`coalesce(sum(${savingsGoals.currentAmount}), 0)`,
         })
         .from(savingsGoals)
-        .where(eq(savingsGoals.familyId, user.familyId)),
+        .where(goalsVisible),
 
       db
         .select({
@@ -52,7 +63,7 @@ export const getDashboardSummary = cache(async () => {
         .innerJoin(categories, eq(transactions.categoryId, categories.id))
         .where(
           and(
-            familyId,
+            txVisible,
             eq(transactions.type, "EXPENSE"),
             gte(transactions.occurredAt, start),
             lt(transactions.occurredAt, end),
@@ -63,7 +74,7 @@ export const getDashboardSummary = cache(async () => {
         .limit(5),
 
       db.query.transactions.findMany({
-        where: familyId,
+        where: txVisible,
         with: { category: true },
         orderBy: [desc(transactions.occurredAt)],
         limit: 5,

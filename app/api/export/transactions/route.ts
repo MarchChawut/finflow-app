@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { transactions } from "@/lib/db/schema";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { verifySession } from "@/lib/dal";
 import { CHANNEL_LABELS } from "@/lib/format";
+import { visibleTo } from "@/lib/db/visibility";
 
 function csvEscape(value: string): string {
   if (/[",\n]/.test(value)) {
@@ -18,7 +19,10 @@ export async function GET() {
   const user = await verifySession();
 
   const rows = await db.query.transactions.findMany({
-    where: eq(transactions.familyId, user.familyId),
+    where: and(
+      eq(transactions.familyId, user.familyId),
+      visibleTo(transactions.visibility, transactions.createdById, user.id),
+    ),
     with: { category: true },
     orderBy: [desc(transactions.occurredAt)],
   });

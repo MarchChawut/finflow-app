@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { createGoal, type GoalFormState } from "@/lib/actions/goals";
 import { FormModal } from "@/components/FormModal";
+import { VisibilityField } from "@/components/VisibilityField";
 
 // Tailwind scans source for literal class strings, so these must be spelled
 // out in full rather than built with `bg-${color}-400` template strings.
@@ -28,6 +29,7 @@ type GoalInitialValues = {
   targetAmount?: string;
   color?: keyof typeof COLOR_SWATCHES;
   currentAmount?: string;
+  visibility?: "PERSONAL" | "FAMILY";
 };
 
 // Shared shell for both "create a goal" (GoalModal, below) and "edit a goal"
@@ -60,7 +62,7 @@ export function GoalFormModal({
         <>
           <div>
             <label className="block text-xs font-medium text-slate-500 mb-1">
-              ชื่อเป้าหมาย
+              ชื่อกระเป๋า
             </label>
             <input
               name="title"
@@ -102,7 +104,7 @@ export function GoalFormModal({
               meaningless (and confusing) on the create flow. This is the
               fix path for a wrong contribution (by hand or via the LINE
               savings-transfer feature) or resetting a goal to start over. */}
-          {initialValues && (
+          {initialValues?.currentAmount !== undefined && (
             <div>
               <label className="block text-xs font-medium text-slate-500 mb-1">
                 ยอดออมตอนนี้ (บาท)
@@ -126,6 +128,8 @@ export function GoalFormModal({
               )}
             </div>
           )}
+
+          <VisibilityField defaultValue={initialValues?.visibility ?? "FAMILY"} />
 
           <div>
             <label className="block text-xs font-medium text-slate-500 mb-1">
@@ -154,18 +158,23 @@ export function GoalFormModal({
   );
 }
 
-export function GoalModal() {
+export function GoalModal({
+  defaultVisibility = "FAMILY",
+}: {
+  defaultVisibility?: "PERSONAL" | "FAMILY";
+}) {
   return (
     <GoalFormModal
-      heading="เพิ่มเป้าหมายการออม"
-      submitLabel="สร้างเป้าหมาย"
+      heading="เพิ่มกระเป๋าใหม่"
+      submitLabel="สร้างกระเป๋า"
       action={createGoal}
+      initialValues={{ visibility: defaultVisibility }}
       trigger={(open) => (
         <button
           onClick={open}
           className="py-2 px-4 rounded-xl bg-pink-500 hover:bg-pink-600 text-white font-medium text-xs shadow-md shadow-pink-200 transition-all flex items-center gap-2"
         >
-          <i className="fa-solid fa-plus" /> เพิ่มเป้าหมายออมเงิน
+          <i className="fa-solid fa-plus" /> เพิ่มกระเป๋าใหม่
         </button>
       )}
     />

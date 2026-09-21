@@ -4,6 +4,7 @@ import { useRef, useTransition } from "react";
 import { contributeToGoal, deleteGoal } from "@/lib/actions/goals";
 import { formatBaht } from "@/lib/format";
 import { EditGoalButton } from "@/components/EditGoalButton";
+import { GoalAllocations, type Allocation } from "@/components/GoalAllocations";
 
 const COLOR_MAP: Record<string, { bar: string; text: string; bg: string }> = {
   purple: { bar: "bg-purple-400", text: "text-purple-600", bg: "bg-purple-50" },
@@ -15,17 +16,17 @@ const COLOR_MAP: Record<string, { bar: string; text: string; bg: string }> = {
   teal: { bar: "bg-teal-400", text: "text-teal-600", bg: "bg-teal-50" },
 };
 
-export function GoalCard({
-  goal,
-}: {
-  goal: {
-    id: string;
-    title: string;
-    targetAmount: string;
-    currentAmount: string;
-    color: string | null;
-  };
-}) {
+export type Goal = {
+  id: string;
+  title: string;
+  targetAmount: string;
+  currentAmount: string;
+  color: string | null;
+  visibility: "PERSONAL" | "FAMILY";
+  allocations: Allocation[];
+};
+
+export function GoalCard({ goal }: { goal: Goal }) {
   const formRef = useRef<HTMLFormElement>(null);
   const target = Number(goal.targetAmount);
   const current = Number(goal.currentAmount);
@@ -36,7 +37,7 @@ export function GoalCard({
   const [deleting, startDeleteTransition] = useTransition();
 
   function handleDelete() {
-    if (!confirm(`ลบเป้าหมาย "${goal.title}" ใช่ไหม? ประวัติเงินที่ออมไว้จะหายไปด้วย`)) return;
+    if (!confirm(`ลบกระเป๋า "${goal.title}" ใช่ไหม? ประวัติเงินที่ออมไว้จะหายไปด้วย`)) return;
     // Fade while pending; the card actually disappears once deleteGoal's
     // revalidatePath("/goals") re-fetches the (now shorter) goals list —
     // same pattern as TransactionsTable's row delete.
@@ -62,7 +63,7 @@ export function GoalCard({
           <button
             onClick={handleDelete}
             disabled={deleting}
-            title="ลบเป้าหมาย"
+            title="ลบกระเป๋า"
             className="text-slate-300 hover:text-rose-500 transition-colors disabled:opacity-40"
           >
             <i className="fa-solid fa-trash-can text-xs" />
@@ -70,9 +71,20 @@ export function GoalCard({
         </div>
       </div>
       <div>
-        <h4 className="font-bold text-slate-800 text-sm mb-1">{goal.title}</h4>
+        <h4 className="font-bold text-slate-800 text-sm mb-1 flex items-center gap-2">
+          {goal.title}
+          {goal.visibility === "PERSONAL" && (
+            <span
+              title="มองเห็นได้เฉพาะคุณ"
+              className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-100 text-purple-600 whitespace-nowrap"
+            >
+              <i className="fa-solid fa-lock mr-1" />
+              ส่วนตัว
+            </span>
+          )}
+        </h4>
         <p className="text-xs text-slate-400">
-          {formatBaht(current)} จาก {formatBaht(target)}
+          {formatBaht(current)} เป้าหมาย {formatBaht(target)}
         </p>
       </div>
       <div>
@@ -105,6 +117,8 @@ export function GoalCard({
           <i className="fa-solid fa-plus" />
         </button>
       </form>
+
+      <GoalAllocations goalId={goal.id} currentAmount={goal.currentAmount} allocations={goal.allocations} />
     </div>
   );
 }

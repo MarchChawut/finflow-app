@@ -10,6 +10,7 @@ import {
   integer,
   primaryKey,
   unique,
+  index,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import type { AdapterAccountType } from "next-auth/adapters";
@@ -24,6 +25,11 @@ export const channelEnum = pgEnum("channel", [
   "LIFF_FORM",
   "SLIP_OCR",
 ]);
+// PERSONAL rows are visible only to their creator (createdById); FAMILY rows
+// are visible to the whole family, matching every table's pre-existing
+// behavior. Default is FAMILY so existing rows keep working unchanged.
+export const visibilityEnum = pgEnum("visibility", ["PERSONAL", "FAMILY"]);
+export const allocationTypeEnum = pgEnum("allocation_type", ["AMOUNT", "PERCENT"]);
 
 // --- Families (multi-tenant boundary — one family = one household, its own
 // LINE OA once Phase 2 lands, its own data) ---------------------------------
@@ -155,45 +161,82 @@ export const categories = pgTable("categories", {
 
 // --- Transactions ------------------------------------------------------------
 
-export const transactions = pgTable("transactions", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  familyId: uuid("family_id")
-    .notNull()
-    .references(() => families.id, { onDelete: "cascade" }),
-  title: text("title").notNull(),
-  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
-  type: transactionTypeEnum("type").notNull(),
-  channel: channelEnum("channel").notNull().default("DASHBOARD"),
-  occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  note: text("note"),
-  // "set null" so deleting a category (Settings → categories management)
-  // just untags any transactions that used it, rather than failing the
-  // delete or cascading into losing real financial history.
-  categoryId: uuid("category_id").references(() => categories.id, { onDelete: "set null" }),
-  createdById: uuid("created_by_id").references(() => users.id),
-  // Raw LINE userId at time of capture — kept even before/without an app User binding.
-  lineUserId: varchar("line_user_id", { length: 64 }),
-  // Slip OCR audit trail.
-  rawSlipUrl: text("raw_slip_url"),
-  ocrConfidence: doublePrecision("ocr_confidence"),
-});
+export const transactions = pgTable(
+  "transactions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    familyId: uuid("family_id")
+      .notNull()
+      .references(() => families.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    type: transactionTypeEnum("type").notNull(),
+    channel: channelEnum("channel").notNull().default("DASHBOARD"),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    note: text("note"),
+    // "set null" so deleting a category (Settings → categories management)
+    // just untags any transactions that used it, rather than failing the
+    // delete or cascading into losing real financial history.
+    categoryId: uuid("category_id").references(() => categories.id, { onDelete: "set null" }),
+    createdById: uuid("created_by_id").references(() => users.id),
+    // Raw LINE userId at time of capture — kept even before/without an app User binding.
+    lineUserId: varchar("line_user_id", { length: 64 }),
+    // Slip OCR audit trail.
+    rawSlipUrl: text("raw_slip_url"),
+    ocrConfidence: doublePrecision("ocr_confidence"),
+    visibility: visibilityEnum("visibility").notNull().default("FAMILY"),
+  },
+  (t) => [
+    // Dashboard's month-range aggregates filter on exactly this pair.
+    index("transactions_family_occurred_idx").on(t.familyId, t.occurredAt),
+    // Every family-scoped read/write now also filters by visibility (see
+    // lib/db/visibility.ts's visibleTo()), so this composite backs that.
+    index("transactions_family_visibility_idx").on(t.familyId, t.visibility, t.createdById),
+  ],
+);
 
 // --- Savings goals ------------------------------------------------------------
 
-export const savingsGoals = pgTable("savings_goals", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  familyId: uuid("family_id")
-    .notNull()
-    .references(() => families.id, { onDelete: "cascade" }),
-  title: text("title").notNull(),
-  targetAmount: numeric("target_amount", { precision: 12, scale: 2 }).notNull(),
-  currentAmount: numeric("current_amount", { precision: 12, scale: 2 }).notNull().default("0"),
-  icon: text("icon"),
-  color: text("color"),
-  createdById: uuid("created_by_id").references(() => users.id),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const savingsGoals = pgTable(
+  "savings_goals",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    familyId: uuid("family_id")
+      .notNull()
+      .references(() => families.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    targetAmount: numeric("target_amount", { precision: 12, scale: 2 }).notNull(),
+    currentAmount: numeric("current_amount", { precision: 12, scale: 2 }).notNull().default("0"),
+    icon: text("icon"),
+    color: text("color"),
+    createdById: uuid("created_by_id").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    visibility: visibilityEnum("visibility").notNull().default("FAMILY"),
+  },
+  (t) => [index("savings_goals_family_visibility_idx").on(t.familyId, t.visibility, t.createdById)],
+);
+
+// --- Goal allocations (sub-portions of a wallet's target, set by amount or
+// percent-of-target — purely a planning breakdown, not linked to real
+// transactions) ------------------------------------------------------------
+
+export const goalAllocations = pgTable(
+  "goal_allocations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    goalId: uuid("goal_id")
+      .notNull()
+      .references(() => savingsGoals.id, { onDelete: "cascade" }),
+    label: text("label").notNull(),
+    type: allocationTypeEnum("type").notNull(),
+    // AMOUNT = baht; PERCENT = 0-100, percent of the parent goal's targetAmount.
+    value: numeric("value", { precision: 12, scale: 2 }).notNull(),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("goal_allocations_goal_idx").on(t.goalId)],
+);
 
 // --- Recurring monthly bills (water/electric/phone/insurance/...) ----------
 
@@ -287,9 +330,17 @@ export const transactionsRelations = relations(transactions, ({ one }) => ({
   }),
 }));
 
-export const savingsGoalsRelations = relations(savingsGoals, ({ one }) => ({
+export const savingsGoalsRelations = relations(savingsGoals, ({ one, many }) => ({
   createdBy: one(users, {
     fields: [savingsGoals.createdById],
     references: [users.id],
+  }),
+  allocations: many(goalAllocations),
+}));
+
+export const goalAllocationsRelations = relations(goalAllocations, ({ one }) => ({
+  goal: one(savingsGoals, {
+    fields: [goalAllocations.goalId],
+    references: [savingsGoals.id],
   }),
 }));

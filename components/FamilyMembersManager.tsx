@@ -146,7 +146,7 @@ export function FamilyMembersManager({
     <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-soft">
       <h3 className="font-bold text-slate-800 text-sm mb-1">สมาชิกครอบครัว</h3>
       <p className="text-xs text-slate-400 mb-4">
-        ทุกคนเห็นข้อมูลการเงินร่วมกันอยู่แล้ว — บทบาทนี้ไว้เผื่อใช้แยกสิทธิ์ในอนาคต
+        ข้อมูลที่ตั้งเป็น &quot;ครอบครัว&quot; ทุกคนเห็นร่วมกัน ส่วนที่ตั้งเป็น &quot;ส่วนตัว&quot; จะเห็นได้เฉพาะเจ้าของเท่านั้น — บทบาทนี้ไว้เผื่อใช้แยกสิทธิ์เพิ่มเติมในอนาคต
       </p>
       <div className="space-y-2">
         {members.map((m) => (

@@ -1,5 +1,5 @@
 import "server-only";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { savingsGoals } from "@/lib/db/schema";
 
@@ -7,9 +7,14 @@ import { savingsGoals } from "@/lib/db/schema";
 // (app/api/line/webhook/route.ts) and the monthly savings-reminder push
 // (app/api/cron/savings-reminder/route.ts) — one source of truth for what
 // "your goals progress" looks like as a LINE message.
+//
+// FAMILY-visibility goals only: this same text is broadcast identically to
+// every bound member (see lib/line/reminder.ts's per-member push loop), with
+// no per-recipient customization — including a PERSONAL goal here would leak
+// it to every other family member's LINE chat.
 export async function buildGoalsSummaryText(familyId: string): Promise<string> {
   const goals = await db.query.savingsGoals.findMany({
-    where: eq(savingsGoals.familyId, familyId),
+    where: and(eq(savingsGoals.familyId, familyId), eq(savingsGoals.visibility, "FAMILY")),
     orderBy: (g, { asc }) => [asc(g.createdAt)],
   });
 

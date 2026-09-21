@@ -23,7 +23,7 @@ const NAV_ITEMS: NavItem[] = [
   },
   {
     href: "/goals",
-    label: "เป้าหมายการออม",
+    label: "กระเป๋า",
     icon: "fa-solid fa-piggy-bank text-pink-500",
   },
   {
