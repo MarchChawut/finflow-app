@@ -6,8 +6,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { transactions } from "@/lib/db/schema";
 import { verifySession } from "@/lib/dal";
-import { fetchTransactionsPage, type TransactionTab } from "@/lib/data/transactions";
-import { visibleTo } from "@/lib/db/visibility";
+import { fetchTransactionsPage } from "@/lib/data/transactions";
 
 const TransactionSchema = z.object({
   title: z.string().trim().min(1, { error: "กรุณาระบุรายการ" }),
@@ -16,7 +15,6 @@ const TransactionSchema = z.object({
   categoryId: z.uuid().optional().or(z.literal("")),
   channel: z.enum(["DASHBOARD", "LINE_CHAT", "LIFF_FORM", "SLIP_OCR"]).default("DASHBOARD"),
   note: z.string().trim().nullish(),
-  visibility: z.enum(["PERSONAL", "FAMILY"]).default("PERSONAL"),
 });
 
 export type TransactionFormState = {
@@ -25,13 +23,13 @@ export type TransactionFormState = {
   success?: boolean;
 } | undefined;
 
-// Scopes a mutation to a transaction this caller may actually touch: same
-// family, and (FAMILY-visibility OR owned by the caller).
+// Scopes a mutation to a transaction this caller may actually touch —
+// transactions are always personal, so only their own creator ever can.
 function ownedTransaction(id: string, familyId: string, userId: string) {
   return and(
     eq(transactions.id, id),
     eq(transactions.familyId, familyId),
-    visibleTo(transactions.visibility, transactions.createdById, userId),
+    eq(transactions.createdById, userId),
   );
 }
 
@@ -48,7 +46,6 @@ export async function createTransaction(
     categoryId: formData.get("categoryId"),
     channel: formData.get("channel") || "DASHBOARD",
     note: formData.get("note"),
-    visibility: formData.get("visibility") || undefined,
   });
 
   if (!validated.success) {
@@ -58,7 +55,7 @@ export async function createTransaction(
     };
   }
 
-  const { title, amount, type, categoryId, channel, note, visibility } = validated.data;
+  const { title, amount, type, categoryId, channel, note } = validated.data;
 
   await db.insert(transactions).values({
     title,
@@ -69,7 +66,6 @@ export async function createTransaction(
     note: note || null,
     createdById: user.id,
     familyId: user.familyId,
-    visibility,
   });
 
   revalidatePath("/");
@@ -91,7 +87,6 @@ export async function updateTransaction(
     categoryId: formData.get("categoryId"),
     channel: formData.get("channel") || "DASHBOARD",
     note: formData.get("note"),
-    visibility: formData.get("visibility") || undefined,
   });
 
   if (!validated.success) {
@@ -101,7 +96,7 @@ export async function updateTransaction(
     };
   }
 
-  const { title, amount, type, categoryId, note, visibility } = validated.data;
+  const { title, amount, type, categoryId, note } = validated.data;
 
   await db
     .update(transactions)
@@ -111,7 +106,6 @@ export async function updateTransaction(
       type,
       categoryId: categoryId || null,
       note: note || null,
-      visibility,
     })
     .where(ownedTransaction(id, user.familyId, user.id));
 
@@ -127,14 +121,7 @@ export async function deleteTransaction(id: string) {
   revalidatePath("/transactions");
 }
 
-export async function loadMoreTransactions(offset: number, tab: TransactionTab) {
+export async function loadMoreTransactions(offset: number) {
   const user = await verifySession();
-  return fetchTransactionsPage(user.familyId, offset, user.id, tab);
-}
-
-// Resets to page one of the given tab — used when the "ส่วนตัว/ครอบครัว"
-// toggle switches, as opposed to loadMoreTransactions which appends.
-export async function fetchTransactionsForTab(tab: TransactionTab) {
-  const user = await verifySession();
-  return fetchTransactionsPage(user.familyId, 0, user.id, tab);
+  return fetchTransactionsPage(user.familyId, offset, user.id);
 }

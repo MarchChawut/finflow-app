@@ -1,6 +1,6 @@
 import "server-only";
 import { cache } from "react";
-import { and, eq, isNull, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, isNull, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { categories, transactions, users } from "@/lib/db/schema";
 import { verifySession } from "@/lib/dal";
@@ -13,8 +13,8 @@ export type PayPeriodSummary = {
   leftover: number;
 };
 
-// Shared by computePayPeriodSummary and computeFamilyCategoryBreakdown: both
-// need "which rows count as this user's own, and from what point in time."
+// Shared by computePayPeriodSummary and computeCategoryBreakdown: both need
+// "which rows count as this user's own, and from what point in time."
 async function getUserPeriodWindow(userId: string, familyId: string) {
   const dbUser = await db.query.users.findFirst({
     where: eq(users.id, userId),
@@ -109,32 +109,6 @@ export const getPayPeriodSummary = cache(async () => {
   return computePayPeriodSummary(user.id, user.familyId);
 });
 
-// Family-wide "this period" totals for the dashboard's top metric cards and
-// bar chart — each member's own pay-period window (since their own
-// salaryReceivedAt, or all-time if never marked) summed together, so a
-// multi-person family's numbers reflect "since each person's own payday,"
-// never one shared calendar boundary that mixes everyone's different
-// paydays back together (the exact problem this whole feature exists for).
-// Reuses computePayPeriodSummary per member rather than a new correlated
-// query — more DB round trips, but no new place for the per-user logic to
-// drift out of sync with PayPeriodCard's own numbers.
-export async function computeFamilyPeriodTotals(familyId: string) {
-  const members = await db.query.users.findMany({
-    where: eq(users.familyId, familyId),
-    columns: { id: true },
-  });
-  const summaries = await Promise.all(
-    members.map((member) => computePayPeriodSummary(member.id, familyId)),
-  );
-  return summaries.reduce(
-    (acc, s) => ({
-      periodIncome: acc.periodIncome + s.periodIncome,
-      periodSpending: acc.periodSpending + s.periodSpending,
-    }),
-    { periodIncome: 0, periodSpending: 0 },
-  );
-}
-
 export type CategoryBreakdownRow = {
   categoryId: string;
   name: string;
@@ -142,60 +116,38 @@ export type CategoryBreakdownRow = {
   total: number;
 };
 
-// "หมวดหมู่รายจ่ายสูงสุด" — same per-member-window reasoning as
-// computeFamilyPeriodTotals, but grouped by category. Each member's own
-// spending is only counted from their own period start, then merged across
-// members (a shared FAMILY category two people both spent from needs its
-// amounts summed together, not reported as two separate rows).
-export async function computeFamilyCategoryBreakdown(
+// "หมวดหมู่รายจ่ายสูงสุด" — this user's own spending only (never another
+// family member's, even FAMILY-visibility categories they also used),
+// scoped to their own pay-period window, same reasoning as
+// computePayPeriodSummary.
+export async function computeCategoryBreakdown(
+  userId: string,
   familyId: string,
 ): Promise<CategoryBreakdownRow[]> {
-  const members = await db.query.users.findMany({
-    where: eq(users.familyId, familyId),
-    columns: { id: true },
-  });
+  const { ownership, periodStartFloor } = await getUserPeriodWindow(userId, familyId);
 
-  const perMemberRows = await Promise.all(
-    members.map(async (member) => {
-      const { ownership, periodStartFloor } = await getUserPeriodWindow(member.id, familyId);
-      // No isSavingsSweep filter needed — a sweep transaction has no
-      // categoryId, so this INNER JOIN already drops it, same as the
-      // calendar-month version of this query did before it.
-      return db
-        .select({
-          categoryId: categories.id,
-          name: categories.name,
-          color: categories.color,
-          total: sql<string>`coalesce(sum(${transactions.amount}), 0)`,
-        })
-        .from(transactions)
-        .innerJoin(categories, eq(transactions.categoryId, categories.id))
-        .where(
-          and(
-            eq(transactions.familyId, familyId),
-            ownership,
-            eq(transactions.type, "EXPENSE"),
-            sql`${transactions.occurredAt} >= ${periodStartFloor}`,
-          ),
-        )
-        .groupBy(categories.id, categories.name, categories.color);
-    }),
-  );
+  // No isSavingsSweep filter needed — a sweep transaction has no
+  // categoryId, so this INNER JOIN already drops it.
+  const rows = await db
+    .select({
+      categoryId: categories.id,
+      name: categories.name,
+      color: categories.color,
+      total: sql<string>`coalesce(sum(${transactions.amount}), 0)`,
+    })
+    .from(transactions)
+    .innerJoin(categories, eq(transactions.categoryId, categories.id))
+    .where(
+      and(
+        eq(transactions.familyId, familyId),
+        ownership,
+        eq(transactions.type, "EXPENSE"),
+        sql`${transactions.occurredAt} >= ${periodStartFloor}`,
+      ),
+    )
+    .groupBy(categories.id, categories.name, categories.color)
+    .orderBy(desc(sql`sum(${transactions.amount})`))
+    .limit(5);
 
-  const merged = new Map<string, CategoryBreakdownRow>();
-  for (const rows of perMemberRows) {
-    for (const row of rows) {
-      const existing = merged.get(row.categoryId);
-      const total = Number(row.total);
-      if (existing) {
-        existing.total += total;
-      } else {
-        merged.set(row.categoryId, { categoryId: row.categoryId, name: row.name, color: row.color, total });
-      }
-    }
-  }
-
-  return Array.from(merged.values())
-    .sort((a, b) => b.total - a.total)
-    .slice(0, 5);
+  return rows.map((row) => ({ ...row, total: Number(row.total) }));
 }

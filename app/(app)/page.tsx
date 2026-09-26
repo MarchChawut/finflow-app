@@ -51,7 +51,7 @@ export default async function DashboardPage() {
             value={formatBaht(summary.monthIncome)}
             footer={
               <p className="text-xs text-slate-400">
-                นับตั้งแต่เงินเดือนเข้าล่าสุดของแต่ละคน
+                นับตั้งแต่เงินเดือนเข้าล่าสุดของคุณ
               </p>
             }
           />
@@ -63,7 +63,7 @@ export default async function DashboardPage() {
             value={formatBaht(summary.monthExpense)}
             footer={
               <p className="text-xs text-slate-400">
-                นับตั้งแต่เงินเดือนเข้าล่าสุดของแต่ละคน
+                นับตั้งแต่เงินเดือนเข้าล่าสุดของคุณ
               </p>
             }
           />

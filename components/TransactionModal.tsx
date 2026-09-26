@@ -3,7 +3,6 @@
 import { useState, type ReactNode } from "react";
 import { createTransaction, type TransactionFormState } from "@/lib/actions/transactions";
 import { FormModal } from "@/components/FormModal";
-import { VisibilityField } from "@/components/VisibilityField";
 
 type Category = { id: string; name: string; type: "INCOME" | "EXPENSE" };
 
@@ -19,7 +18,6 @@ type TransactionInitialValues = {
   amount?: string;
   type?: "INCOME" | "EXPENSE";
   categoryId?: string | null;
-  visibility?: "PERSONAL" | "FAMILY";
 };
 
 // Shared shell for both "create a transaction" (TransactionModal, below) and
@@ -154,8 +152,6 @@ export function TransactionFormModal({
             </select>
           </div>
 
-          <VisibilityField defaultValue={initialValues?.visibility ?? "PERSONAL"} />
-
           <input type="hidden" name="channel" value={fixedChannel ?? "DASHBOARD"} />
         </>
       )}
@@ -163,20 +159,13 @@ export function TransactionFormModal({
   );
 }
 
-export function TransactionModal({
-  categories,
-  defaultVisibility = "FAMILY",
-}: {
-  categories: Category[];
-  defaultVisibility?: "PERSONAL" | "FAMILY";
-}) {
+export function TransactionModal({ categories }: { categories: Category[] }) {
   return (
     <TransactionFormModal
       heading="เพิ่มรายการใหม่"
       submitLabel="บันทึกรายการ"
       action={createTransaction}
       categories={categories}
-      initialValues={{ visibility: defaultVisibility }}
       trigger={(open) => (
         <button
           onClick={open}

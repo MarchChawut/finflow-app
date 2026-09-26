@@ -16,7 +16,6 @@ export function EditTransactionButton({
     type: "INCOME" | "EXPENSE";
     channel: string;
     categoryId: string | null;
-    visibility: "PERSONAL" | "FAMILY";
   };
   categories: Category[];
 }) {
@@ -32,7 +31,6 @@ export function EditTransactionButton({
         amount: transaction.amount,
         type: transaction.type,
         categoryId: transaction.categoryId,
-        visibility: transaction.visibility,
       }}
       trigger={(open) => (
         <button
