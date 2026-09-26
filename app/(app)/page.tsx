@@ -1,18 +1,23 @@
 import { getDashboardSummary } from "@/lib/data/dashboard";
 import { getCategories } from "@/lib/data/transactions";
+import { getGoals } from "@/lib/data/goals";
+import { getPayPeriodSummary } from "@/lib/data/payPeriod";
 import { getSession } from "@/lib/session";
 import { Header } from "@/components/Header";
 import { MetricCard } from "@/components/MetricCard";
 import { TransactionModal } from "@/components/TransactionModal";
+import { PayPeriodCard } from "@/components/PayPeriodCard";
 import { CategoryDoughnutChart } from "@/components/charts/CategoryDoughnutChart";
 import { IncomeExpenseBarChart } from "@/components/charts/IncomeExpenseBarChart";
 import { formatBaht, formatDateTime, CHANNEL_LABELS } from "@/lib/format";
 
 export default async function DashboardPage() {
-  const [summary, categories, session] = await Promise.all([
+  const [summary, categories, session, goals, payPeriod] = await Promise.all([
     getDashboardSummary(),
     getCategories(),
     getSession(),
+    getGoals(),
+    getPayPeriodSummary(),
   ]);
   const user = session!.user;
 
@@ -46,7 +51,7 @@ export default async function DashboardPage() {
             value={formatBaht(summary.monthIncome)}
             footer={
               <p className="text-xs text-slate-400">
-                อัปเดตจาก LINE Slip Auto-Detect
+                นับตั้งแต่เงินเดือนเข้าล่าสุดของแต่ละคน
               </p>
             }
           />
@@ -56,6 +61,11 @@ export default async function DashboardPage() {
             icon="fa-solid fa-money-bill-1"
             iconBadge="fa-solid fa-coins"
             value={formatBaht(summary.monthExpense)}
+            footer={
+              <p className="text-xs text-slate-400">
+                นับตั้งแต่เงินเดือนเข้าล่าสุดของแต่ละคน
+              </p>
+            }
           />
           <MetricCard
             tone="amber"
@@ -72,6 +82,14 @@ export default async function DashboardPage() {
             }
           />
         </div>
+
+        <PayPeriodCard
+          periodStart={payPeriod.periodStart}
+          periodIncome={payPeriod.periodIncome}
+          periodSpending={payPeriod.periodSpending}
+          leftover={payPeriod.leftover}
+          goals={goals}
+        />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 bg-white p-6 rounded-3xl border border-slate-100 shadow-soft">

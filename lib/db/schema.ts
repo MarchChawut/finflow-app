@@ -8,6 +8,7 @@ import {
   timestamp,
   doublePrecision,
   integer,
+  boolean,
   primaryKey,
   unique,
   index,
@@ -93,6 +94,10 @@ export const users = pgTable("users", {
   // resolved familyId.
   familyId: uuid("family_id").references(() => families.id),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  // Per-user pay-period marker: "เงินเดือนเข้าวันนี้" sets this to now, and the
+  // dashboard's pay-period card sums this user's own transactions from this
+  // point forward instead of by calendar month. Null means never marked yet.
+  salaryReceivedAt: timestamp("salary_received_at", { withTimezone: true }),
 }, (t) => [unique().on(t.familyId, t.lineUserId)]);
 
 // --- Auth.js tables (accounts/sessions/verificationTokens) ---------------
@@ -186,6 +191,10 @@ export const transactions = pgTable(
     rawSlipUrl: text("raw_slip_url"),
     ocrConfidence: doublePrecision("ocr_confidence"),
     visibility: visibilityEnum("visibility").notNull().default("FAMILY"),
+    // True for the EXPENSE row created by "เคลียร์ยอดคงเหลือเข้าเงินออม" — money
+    // really did leave the user's pay-period balance, but it shouldn't count
+    // as ordinary spending when judging whether a period's income covered it.
+    isSavingsSweep: boolean("is_savings_sweep").notNull().default(false),
   },
   (t) => [
     // Dashboard's month-range aggregates filter on exactly this pair.

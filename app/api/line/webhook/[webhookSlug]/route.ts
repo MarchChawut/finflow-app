@@ -12,6 +12,7 @@ import { googleVisionOcr } from "@/lib/ocr";
 import { findMatchingGoal } from "@/lib/line/matchGoal";
 import { buildGoalsSummaryText } from "@/lib/line/summaries";
 import { visibleTo } from "@/lib/db/visibility";
+import { isSoloFamily } from "@/lib/db/family";
 
 // A message like "ย้ายเงินคงเหลือไปไว้ในเงินออมเพื่อไปใช้เป็นประกันรถ 250 บาท" still
 // records as a normal expense (the money really did leave free balance) but
@@ -183,19 +184,6 @@ async function resolveLineUser(
   return matched ?? null;
 }
 
-// A solo family (just its host, nobody invited yet) has no one else who
-// could ever see the difference between FAMILY and PERSONAL — so there's
-// nothing useful to ask, and every LINE-recorded transaction is PERSONAL by
-// construction.
-async function isSoloFamily(familyId: string): Promise<boolean> {
-  const members = await db.query.users.findMany({
-    where: eq(users.familyId, familyId),
-    columns: { id: true },
-    limit: 2,
-  });
-  return members.length <= 1;
-}
-
 async function handleSavingsTransfer(
   lineClients: LineClients,
   familyId: string,
@@ -331,7 +319,9 @@ async function buildTodaySummaryText(familyId: string, userId: string): Promise<
   const [totals] = await db
     .select({
       income: sql<string>`coalesce(sum(case when ${transactions.type} = 'INCOME' then ${transactions.amount} else 0 end), 0)`,
-      expense: sql<string>`coalesce(sum(case when ${transactions.type} = 'EXPENSE' then ${transactions.amount} else 0 end), 0)`,
+      // Excludes isSavingsSweep rows — a clear-to-savings sweep isn't real
+      // spending, same reasoning as lib/data/dashboard.ts's monthExpense.
+      expense: sql<string>`coalesce(sum(case when ${transactions.type} = 'EXPENSE' and ${transactions.isSavingsSweep} = false then ${transactions.amount} else 0 end), 0)`,
     })
     .from(transactions)
     .where(
