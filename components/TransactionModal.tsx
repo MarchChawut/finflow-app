@@ -154,7 +154,7 @@ export function TransactionFormModal({
             </select>
           </div>
 
-          <VisibilityField defaultValue={initialValues?.visibility ?? "FAMILY"} />
+          <VisibilityField defaultValue={initialValues?.visibility ?? "PERSONAL"} />
 
           <input type="hidden" name="channel" value={fixedChannel ?? "DASHBOARD"} />
         </>

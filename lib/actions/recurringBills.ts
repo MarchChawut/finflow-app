@@ -108,6 +108,9 @@ export async function markRecurringBillPaid(id: string) {
     categoryId: bill.categoryId,
     createdById: user.id,
     familyId: user.familyId,
+    // Explicit rather than relying on the column default — set here so it
+    // stays correct even if that default ever changes for a different table.
+    visibility: "PERSONAL",
   });
 
   await db

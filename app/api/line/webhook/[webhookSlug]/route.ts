@@ -141,7 +141,10 @@ async function handleEvent(event: webhook.Event, familyId: string, lineClients: 
       lineUserId,
       familyId,
       createdById: boundUser.id,
-      visibility: solo ? "PERSONAL" : "FAMILY",
+      // Personal by default — the ครอบครัว/ส่วนตัว quick-reply below (asked
+      // only in multi-person families) lets the sender opt this specific
+      // transaction into FAMILY visibility afterward.
+      visibility: "PERSONAL",
     });
 
     const sign = parsed.type === "INCOME" ? "+" : "-";
@@ -279,7 +282,8 @@ async function handleImageMessage(
       ocrConfidence: confidence,
       familyId,
       createdById: userId,
-      visibility: solo ? "PERSONAL" : "FAMILY",
+      // Personal by default — same reasoning as the text-message insert above.
+      visibility: "PERSONAL",
     });
 
     const lowConfidence = confidence < OCR_CONFIDENCE_REVIEW_THRESHOLD;

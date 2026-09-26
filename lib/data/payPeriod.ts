@@ -1,6 +1,6 @@
 import "server-only";
 import { cache } from "react";
-import { and, eq, isNull, or, sql } from "drizzle-orm";
+import { and, eq, isNull, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { categories, transactions, users } from "@/lib/db/schema";
 import { verifySession } from "@/lib/dal";
@@ -18,7 +18,7 @@ export type PayPeriodSummary = {
 async function getUserPeriodWindow(userId: string, familyId: string) {
   const dbUser = await db.query.users.findFirst({
     where: eq(users.id, userId),
-    columns: { salaryReceivedAt: true },
+    columns: { salaryReceivedAt: true, lineUserId: true },
   });
   const periodStart = dbUser?.salaryReceivedAt ?? null;
 
@@ -28,16 +28,27 @@ async function getUserPeriodWindow(userId: string, familyId: string) {
   // answers "did *this person's* salary cover *their* spending," so another
   // member's transactions must never be folded in, even FAMILY-visible ones.
   //
-  // Exception: in a solo family, a FAMILY-visibility row with no
-  // createdById (a historical transaction recorded before the LINE-binding
-  // requirement existed) can only ever be this one person's — there's no
-  // other member it could ambiguously belong to — so it's folded in too.
-  // In a multi-person family such a row stays excluded from everyone, since
-  // guessing which member it belongs to isn't safe.
+  // A row can be missing createdById for two reasons, both predating the
+  // LINE-binding requirement (every current insert path sets createdById
+  // unconditionally): 1) solo family — there's no one else it could belong
+  // to, so any orphaned FAMILY row is unambiguously this one person's; or
+  // 2) its lineUserId matches this user's own bound lineUserId — since
+  // users.lineUserId is unique per family, that match is unambiguous
+  // regardless of family size, and is strictly more precise than the
+  // solo-family case (this catches the same rows there too when they happen
+  // to carry a lineUserId, so it's additive, not a replacement).
+  const orphanedFamilyRow = and(
+    eq(transactions.visibility, "FAMILY"),
+    isNull(transactions.createdById),
+  ) as SQL;
+  const ownershipConditions: SQL[] = [eq(transactions.createdById, userId)];
   const solo = await isSoloFamily(familyId);
-  const ownership = solo
-    ? or(eq(transactions.createdById, userId), and(eq(transactions.visibility, "FAMILY"), isNull(transactions.createdById)))
-    : eq(transactions.createdById, userId);
+  if (solo) {
+    ownershipConditions.push(orphanedFamilyRow);
+  } else if (dbUser?.lineUserId) {
+    ownershipConditions.push(and(orphanedFamilyRow, eq(transactions.lineUserId, dbUser.lineUserId)) as SQL);
+  }
+  const ownership = or(...ownershipConditions) as SQL;
 
   // Truncated to start-of-day in Asia/Bangkok, explicitly — the existing
   // monthRange() previously used in lib/data/dashboard.ts relied on

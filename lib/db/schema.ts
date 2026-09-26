@@ -190,7 +190,10 @@ export const transactions = pgTable(
     // Slip OCR audit trail.
     rawSlipUrl: text("raw_slip_url"),
     ocrConfidence: doublePrecision("ocr_confidence"),
-    visibility: visibilityEnum("visibility").notNull().default("FAMILY"),
+    // Personal by default — only savingsGoals ("กระเป๋า") default to FAMILY.
+    // A family member has to opt a specific transaction into FAMILY visibility;
+    // everything else about their records stays private to them.
+    visibility: visibilityEnum("visibility").notNull().default("PERSONAL"),
     // True for the EXPENSE row created by "เคลียร์ยอดคงเหลือเข้าเงินออม" — money
     // really did leave the user's pay-period balance, but it shouldn't count
     // as ordinary spending when judging whether a period's income covered it.

@@ -16,7 +16,7 @@ const TransactionSchema = z.object({
   categoryId: z.uuid().optional().or(z.literal("")),
   channel: z.enum(["DASHBOARD", "LINE_CHAT", "LIFF_FORM", "SLIP_OCR"]).default("DASHBOARD"),
   note: z.string().trim().nullish(),
-  visibility: z.enum(["PERSONAL", "FAMILY"]).default("FAMILY"),
+  visibility: z.enum(["PERSONAL", "FAMILY"]).default("PERSONAL"),
 });
 
 export type TransactionFormState = {
