@@ -261,9 +261,12 @@ export const recurringBills = pgTable("recurring_bills", {
   amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
   categoryId: uuid("category_id").references(() => categories.id, { onDelete: "set null" }),
   createdById: uuid("created_by_id").references(() => users.id),
-  // Compared against the 1st of the current month to know whether "จ่ายแล้ว"
-  // should be shown as done or pressable again — no cron/reset job needed,
-  // it just naturally flips back once a new month starts.
+  // Compared against the viewer's own pay-period start (users.salaryReceivedAt,
+  // falling back to the 1st of the current month if no period has been
+  // started yet) to know whether "จ่ายแล้ว" should be shown as done or
+  // pressable again — no cron/reset job needed. Marking salary received or
+  // clearing the balance to savings bumps salaryReceivedAt forward, which
+  // naturally flips every bill paid before that moment back to unpaid.
   lastPaidAt: timestamp("last_paid_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

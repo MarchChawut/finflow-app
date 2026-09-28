@@ -64,7 +64,7 @@ export function buildFinancialContextText(data: {
       "รายจ่ายประจำเดือน: " +
         bills
           .slice(0, 10)
-          .map((b) => `${b.name} ${thb(Number(b.amount))} บาท (${b.paidThisMonth ? "จ่ายแล้ว" : "ยังไม่จ่าย"})`)
+          .map((b) => `${b.name} ${thb(Number(b.amount))} บาท (${b.paidThisPeriod ? "จ่ายแล้ว" : "ยังไม่จ่าย"})`)
           .join(", "),
     );
   }

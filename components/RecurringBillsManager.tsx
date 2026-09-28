@@ -13,7 +13,7 @@ type Bill = {
   name: string;
   amount: string;
   categoryId: string | null;
-  paidThisMonth: boolean;
+  paidThisPeriod: boolean;
 };
 
 function BillRow({ bill, categories }: { bill: Bill; categories: Category[] }) {
@@ -51,14 +51,14 @@ function BillRow({ bill, categories }: { bill: Bill; categories: Category[] }) {
       <div className="flex items-center gap-3 shrink-0">
         <button
           onClick={handleMarkPaid}
-          disabled={pending || bill.paidThisMonth}
+          disabled={pending || bill.paidThisPeriod}
           className={`text-xs font-medium px-3 py-1.5 rounded-xl transition-all disabled:opacity-60 ${
-            bill.paidThisMonth
+            bill.paidThisPeriod
               ? "bg-emerald-50 text-emerald-600"
               : "bg-purple-600 hover:bg-purple-700 text-white"
           }`}
         >
-          {bill.paidThisMonth ? "จ่ายแล้วเดือนนี้ ✓" : "จ่ายแล้ว"}
+          {bill.paidThisPeriod ? "จ่ายแล้วรอบนี้ ✓" : "จ่ายแล้ว"}
         </button>
         <EditRecurringBillButton bill={bill} categories={categories} />
         <button

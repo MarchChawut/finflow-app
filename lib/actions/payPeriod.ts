@@ -12,6 +12,8 @@ export async function markSalaryReceived() {
   const user = await verifySession();
   await db.update(users).set({ salaryReceivedAt: new Date() }).where(eq(users.id, user.id));
   revalidatePath("/");
+  // Also flips recurring bills' paid-this-period status on /transactions.
+  revalidatePath("/transactions");
 }
 
 export type ClearPeriodBalanceState = { message?: string; success?: boolean } | undefined;
@@ -67,5 +69,7 @@ export async function clearPeriodBalanceToSavings(
 
   revalidatePath("/");
   revalidatePath("/goals");
+  // Also flips recurring bills' paid-this-period status on /transactions.
+  revalidatePath("/transactions");
   return { success: true };
 }

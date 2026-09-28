@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { recurringBills, transactions } from "@/lib/db/schema";
 import { verifySession } from "@/lib/dal";
+import { getBillPeriodStart } from "@/lib/data/recurringBills";
 
 const RecurringBillSchema = z.object({
   name: z.string().trim().min(1, { error: "กรุณาระบุชื่อรายจ่าย" }),
@@ -18,6 +19,16 @@ export type RecurringBillFormState = {
   message?: string;
   success?: boolean;
 } | undefined;
+
+// Personal, like every other feature except savingsGoals ("กระเป๋า") — a
+// recurring bill can only ever be touched by whoever created it.
+function ownedBill(id: string, familyId: string, userId: string) {
+  return and(
+    eq(recurringBills.id, id),
+    eq(recurringBills.familyId, familyId),
+    eq(recurringBills.createdById, userId),
+  );
+}
 
 export async function createRecurringBill(
   _prevState: RecurringBillFormState,
@@ -71,7 +82,7 @@ export async function updateRecurringBill(
   await db
     .update(recurringBills)
     .set({ name, amount: amount.toFixed(2), categoryId: categoryId || null })
-    .where(and(eq(recurringBills.id, id), eq(recurringBills.familyId, user.familyId)));
+    .where(ownedBill(id, user.familyId, user.id));
 
   revalidatePath("/transactions");
   return { success: true };
@@ -79,9 +90,7 @@ export async function updateRecurringBill(
 
 export async function deleteRecurringBill(id: string) {
   const user = await verifySession();
-  await db
-    .delete(recurringBills)
-    .where(and(eq(recurringBills.id, id), eq(recurringBills.familyId, user.familyId)));
+  await db.delete(recurringBills).where(ownedBill(id, user.familyId, user.id));
   revalidatePath("/transactions");
 }
 
@@ -89,16 +98,15 @@ export async function markRecurringBillPaid(id: string) {
   const user = await verifySession();
 
   const bill = await db.query.recurringBills.findFirst({
-    where: and(eq(recurringBills.id, id), eq(recurringBills.familyId, user.familyId)),
+    where: ownedBill(id, user.familyId, user.id),
   });
   if (!bill) return;
 
-  // Idempotent per month — mirrors getRecurringBills()'s paidThisMonth check.
-  // The UI already disables the button once paid, but this guards against a
-  // raced double-click/retry creating a duplicate expense transaction.
-  const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  if (bill.lastPaidAt && new Date(bill.lastPaidAt) >= startOfMonth) return;
+  // Idempotent per pay period — mirrors getRecurringBills()'s paidThisPeriod
+  // check. The UI already disables the button once paid, but this guards
+  // against a raced double-click/retry creating a duplicate expense transaction.
+  const periodStart = await getBillPeriodStart(user.id);
+  if (bill.lastPaidAt && new Date(bill.lastPaidAt) >= periodStart) return;
 
   await db.insert(transactions).values({
     title: bill.name,
@@ -116,7 +124,7 @@ export async function markRecurringBillPaid(id: string) {
   await db
     .update(recurringBills)
     .set({ lastPaidAt: new Date() })
-    .where(and(eq(recurringBills.id, id), eq(recurringBills.familyId, user.familyId)));
+    .where(ownedBill(id, user.familyId, user.id));
 
   revalidatePath("/transactions");
   revalidatePath("/");
